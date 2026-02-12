@@ -5,12 +5,15 @@ services:
       - /dev/snd:/dev/snd
     privileged: true
     environment:
+      - PYTHONUNBUFFERED=1
       - DB_HOST=db
       - DB_NAME=soundscape
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
       - SAMPLE_RATE=192000
+    volumes:
+      - audio_lock:/locks
     depends_on:
       db:
         condition: service_healthy
@@ -22,6 +25,7 @@ services:
       - /dev/snd:/dev/snd
     privileged: true
     environment:
+      - PYTHONUNBUFFERED=1
       - DB_HOST=db
       - DB_NAME=soundscape
       - DB_USER=postgres
@@ -29,6 +33,8 @@ services:
       - DEVICE_NAME=AudioMoth
       - SAMPLE_RATE=192000
       - DETECTION_THRESHOLD=0.3
+    volumes:
+      - audio_lock:/locks
     depends_on:
       db:
         condition: service_healthy
@@ -37,6 +43,7 @@ services:
   sync-service:
     build: ./sync-service
     environment:
+      - PYTHONUNBUFFERED=1
       - DB_HOST=db
       - DB_NAME=soundscape
       - DB_USER=postgres
@@ -69,3 +76,4 @@ services:
 
 volumes:
   pgdata:
+  audio_lock:

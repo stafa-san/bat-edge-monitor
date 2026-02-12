@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import re
 import subprocess
 from tempfile import TemporaryDirectory
@@ -6,6 +7,8 @@ from typing import Any, AsyncGenerator
 
 import librosa
 import numpy as np
+
+LOCK_PATH = "/locks/audio_device.lock"
 
 
 class AudioDevice:
@@ -42,7 +45,19 @@ class AudioDevice:
                 f'-c {self.channels} -q {temp_file}'
             )
             while True:
-                subprocess.check_call(command, shell=True)
+                lock_fd = open(LOCK_PATH, 'w')
+                try:
+                    # Block until we acquire the exclusive lock
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                    subprocess.check_call(command, shell=True)
+                except subprocess.CalledProcessError:
+                    print('[AST] Audio capture failed, retrying in 2s')
+                    await asyncio.sleep(2)
+                    continue
+                finally:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+
                 data, sr = librosa.load(temp_file, sr=self.sampling_rate)
                 await asyncio.sleep(capture_delay)
                 yield data

@@ -68,3 +68,6 @@ Part of thesis: *"Beyond Single Sensors: Quantifying Data Integrity in Multi-mod
 - Adamiak, M. (2025). Audio Spectrogram Transformers Beyond the Lab.
 - Mac Aodha, O. et al. (2022). Towards a General Approach for Bat Echolocation Detection and Classification.
 - Gong, Y. et al. (2021). AST: Audio Spectrogram Transformer.
+
+##
+- Link: https://bat-edge-monitor-dashboard.vercel.app/
