@@ -9,6 +9,7 @@ import {
   limit,
   onSnapshot,
   Timestamp,
+  getDocs,
 } from "firebase/firestore";
 import { SoundscapeChart } from "@/components/SoundscapeChart";
 import { BatDetectionFeed } from "@/components/BatDetectionFeed";
@@ -43,6 +44,25 @@ export default function Dashboard() {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // Debug: log Firebase config and try a raw query
+    console.log("[Firebase] Project ID:", db.app.options.projectId);
+    console.log("[Firebase] App name:", db.app.name);
+    
+    // Debug: try the simplest possible query
+    const debugRef = collection(db, "classifications");
+    getDocs(query(debugRef, limit(5))).then((snap) => {
+      console.log(`[Debug] Raw query returned ${snap.docs.length} docs`);
+      snap.docs.forEach((doc) => {
+        const d = doc.data();
+        console.log(`[Debug] Doc ${doc.id}:`, {
+          label: d.label,
+          syncTime: d.syncTime,
+          syncTimeType: typeof d.syncTime,
+          hasSyncTime: "syncTime" in d,
+        });
+      });
+    }).catch((err) => console.error("[Debug] Raw query error:", err));
+
     // Real-time listener for classifications
     const classQuery = query(
       collection(db, "classifications"),
