@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
+  doc,
   query,
   orderBy,
   limit,
@@ -14,6 +15,7 @@ import { SoundscapeChart } from "@/components/SoundscapeChart";
 import { BatDetectionFeed } from "@/components/BatDetectionFeed";
 import { StatsCards } from "@/components/StatsCards";
 import { SPLTimeline } from "@/components/SPLTimeline";
+import { DeviceHealth, type DeviceStatus } from "@/components/DeviceHealth";
 
 interface Classification {
   id: string;
@@ -35,11 +37,13 @@ interface BatDetection {
   durationMs: number;
   device: string;
   detectionTime: Timestamp;
+  audioUrl?: string;
 }
 
 export default function Dashboard() {
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [batDetections, setBatDetections] = useState<BatDetection[]>([]);
+  const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -111,9 +115,24 @@ export default function Dashboard() {
       }
     );
 
+    // Real-time listener for device health status
+    const statusRef = doc(db, "deviceStatus", "edge-device");
+    const unsubStatus = onSnapshot(
+      statusRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setDeviceStatus(snapshot.data() as DeviceStatus);
+        }
+      },
+      (error) => {
+        console.error("[Firestore] Device status error:", error);
+      }
+    );
+
     return () => {
       unsubClass();
       unsubBat();
+      unsubStatus();
     };
   }, []);
 
@@ -152,6 +171,9 @@ export default function Dashboard() {
           classifications={classifications}
           batDetections={batDetections}
         />
+
+        {/* Device Health */}
+        <DeviceHealth status={deviceStatus} />
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
