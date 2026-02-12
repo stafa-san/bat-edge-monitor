@@ -36,6 +36,16 @@ export function BatDetectionFeed({ detections }: BatDetectionFeedProps) {
                   </span>
                   <span>{det.durationMs?.toFixed(0)} ms</span>
                 </div>
+                {det.audioUrl && (
+                  <audio
+                    controls
+                    preload="none"
+                    className="mt-2 w-full h-8"
+                    src={det.audioUrl}
+                  >
+                    Your browser does not support audio playback.
+                  </audio>
+                )}
                 <p className="text-xs text-gray-400 mt-1">
                   {det.detectionTime?.toDate
                     ? det.detectionTime.toDate().toLocaleString()

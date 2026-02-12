@@ -33,8 +33,10 @@ services:
       - DEVICE_NAME=AudioMoth
       - SAMPLE_RATE=192000
       - DETECTION_THRESHOLD=0.3
+      - UPLOAD_BAT_AUDIO=false
     volumes:
       - audio_lock:/locks
+      - bat_audio:/bat_audio
     depends_on:
       db:
         condition: service_healthy
@@ -50,8 +52,15 @@ services:
       - DB_PASSWORD=changeme
       - SYNC_INTERVAL=60
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_STORAGE_BUCKET=bat-edge-monitor.firebasestorage.app
+      - UPLOAD_BAT_AUDIO=false
     volumes:
       - ./sync-service/serviceAccountKey.json:/app/serviceAccountKey.json:ro
+      - /proc/uptime:/host/uptime:ro
+      - /proc/meminfo:/host/meminfo:ro
+      - /proc/loadavg:/host/loadavg:ro
+      - /sys/class/thermal/thermal_zone0/temp:/host/cpu_temp:ro
+      - bat_audio:/bat_audio
     depends_on:
       db:
         condition: service_healthy
@@ -77,3 +86,4 @@ services:
 volumes:
   pgdata:
   audio_lock:
+  bat_audio:
