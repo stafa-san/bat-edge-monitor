@@ -54,7 +54,7 @@ async def main():
                 device_id, sync_id, sync_time
             ))
 
-        if len(buffer) >= 150:
+        if len(buffer) >= 25:
             with conn.cursor() as cur:
                 execute_values(cur, """
                     INSERT INTO classifications (label, score, spl, device, sync_id, sync_time)
