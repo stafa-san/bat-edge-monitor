@@ -13,6 +13,7 @@ import {
 import { SoundscapeChart } from "@/components/SoundscapeChart";
 import { BatDetectionFeed } from "@/components/BatDetectionFeed";
 import { StatsCards } from "@/components/StatsCards";
+import { SPLTimeline } from "@/components/SPLTimeline";
 
 interface Classification {
   id: string;
@@ -27,6 +28,7 @@ interface Classification {
 interface BatDetection {
   id: string;
   species: string;
+  commonName: string;
   detectionProb: number;
   lowFreq: number;
   highFreq: number;
@@ -119,6 +121,9 @@ export default function Dashboard() {
           <SoundscapeChart classifications={classifications} />
           <BatDetectionFeed detections={batDetections} />
         </div>
+
+        {/* SPL Timeline */}
+        <SPLTimeline classifications={classifications} />
 
         {/* Recent Classifications Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
