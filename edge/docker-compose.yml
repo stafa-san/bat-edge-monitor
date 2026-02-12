@@ -1,0 +1,71 @@
+services:
+  ast-service:
+    build: ./ast-service
+    devices:
+      - /dev/snd:/dev/snd
+    privileged: true
+    environment:
+      - DB_HOST=db
+      - DB_NAME=soundscape
+      - DB_USER=postgres
+      - DB_PASSWORD=changeme
+      - DEVICE_NAME=AudioMoth
+      - SAMPLE_RATE=192000
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  batdetect-service:
+    build: ./batdetect-service
+    devices:
+      - /dev/snd:/dev/snd
+    privileged: true
+    environment:
+      - DB_HOST=db
+      - DB_NAME=soundscape
+      - DB_USER=postgres
+      - DB_PASSWORD=changeme
+      - DEVICE_NAME=AudioMoth
+      - SAMPLE_RATE=192000
+      - DETECTION_THRESHOLD=0.3
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sync-service:
+    build: ./sync-service
+    environment:
+      - DB_HOST=db
+      - DB_NAME=soundscape
+      - DB_USER=postgres
+      - DB_PASSWORD=changeme
+      - SYNC_INTERVAL=60
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+    volumes:
+      - ./sync-service/serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: soundscape
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

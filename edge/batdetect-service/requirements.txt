@@ -1,0 +1,4 @@
+numpy
+librosa
+batdetect2
+psycopg2-binary

@@ -1,0 +1,9 @@
+numpy
+librosa
+torch
+torchaudio
+transformers
+optimum[onnxruntime]
+scikit-maad
+pandas
+psycopg2-binary
