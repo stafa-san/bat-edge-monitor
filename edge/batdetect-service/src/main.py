@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import os
 import re
 import subprocess
@@ -10,6 +11,8 @@ import numpy as np
 import psycopg2
 from psycopg2.extras import execute_values
 from batdetect2 import api as bat_api
+
+LOCK_PATH = "/locks/audio_device.lock"
 
 
 class BatAudioCapture:
@@ -41,7 +44,13 @@ class BatAudioCapture:
             f'-f S16_LE -r {self.sampling_rate} '
             f'-c 1 -q {temp_file}'
         )
-        subprocess.check_call(command, shell=True)
+        lock_fd = open(LOCK_PATH, 'w')
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            subprocess.check_call(command, shell=True)
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
         return temp_file
 
 
@@ -56,6 +65,8 @@ async def main():
 
     print("[BAT] Loading BatDetect2 model...")
     # Warm up the model
+    config = bat_api.get_config()
+    config["detection_threshold"] = threshold
     print("[BAT] Model loaded successfully")
 
     conn = psycopg2.connect(
@@ -77,9 +88,10 @@ async def main():
             audio_path = await capture.capture_segment(duration=segment_duration)
 
             # Run BatDetect2
-            results = bat_api.process_file(audio_path, detection_threshold=threshold)
+            results = bat_api.process_file(audio_path, config=config)
 
-            detections = results.get("annotations", [])
+            pred_dict = results.get("pred_dict", {})
+            detections = pred_dict.get("annotation", [])
             sync_id = str(uuid.uuid4())
             detection_time = datetime.utcnow()
 
@@ -89,7 +101,7 @@ async def main():
                 rows = []
                 for det in detections:
                     species = det.get("class", "Unknown")
-                    common_name = det.get("class_prob", {})
+                    common_name = species  # BatDetect2 uses Latin names
                     det_prob = det.get("det_prob", 0.0)
                     start = det.get("start_time", 0.0)
                     end = det.get("end_time", 0.0)
