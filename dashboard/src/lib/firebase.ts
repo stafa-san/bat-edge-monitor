@@ -1,8 +1,9 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
-// Vercel env vars may contain trailing newlines from copy-paste — strip them
-const clean = (val: string | undefined) => val?.replace(/[\r\n\s]+$/g, "") ?? "";
+// Vercel env vars may contain literal \n from copy-paste — strip them
+const clean = (val: string | undefined) =>
+  val?.replace(/\\n/g, "").replace(/[\r\n\s]+$/g, "").trim() ?? "";
 
 const firebaseConfig = {
   apiKey: clean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
