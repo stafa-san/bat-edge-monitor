@@ -50,14 +50,33 @@ export default function Dashboard() {
       limit(100)
     );
 
-    const unsubClass = onSnapshot(classQuery, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Classification[];
-      setClassifications(data);
-      setIsConnected(true);
-    });
+    const unsubClass = onSnapshot(
+      classQuery,
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Classification[];
+        setClassifications(data);
+        setIsConnected(true);
+      },
+      (error) => {
+        console.error("[Firestore] Classifications query error:", error);
+        setIsConnected(true);
+        // Fallback: try without orderBy in case index is missing
+        const fallbackQuery = query(
+          collection(db, "classifications"),
+          limit(100)
+        );
+        onSnapshot(fallbackQuery, (snapshot) => {
+          const data = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Classification[];
+          setClassifications(data);
+        });
+      }
+    );
 
     // Real-time listener for bat detections
     const batQuery = query(
@@ -66,13 +85,31 @@ export default function Dashboard() {
       limit(50)
     );
 
-    const unsubBat = onSnapshot(batQuery, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as BatDetection[];
-      setBatDetections(data);
-    });
+    const unsubBat = onSnapshot(
+      batQuery,
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as BatDetection[];
+        setBatDetections(data);
+      },
+      (error) => {
+        console.error("[Firestore] Bat detections query error:", error);
+        // Fallback: try without orderBy
+        const fallbackQuery = query(
+          collection(db, "batDetections"),
+          limit(50)
+        );
+        onSnapshot(fallbackQuery, (snapshot) => {
+          const data = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as BatDetection[];
+          setBatDetections(data);
+        });
+      }
+    );
 
     return () => {
       unsubClass();
