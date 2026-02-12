@@ -2,6 +2,7 @@ import asyncio
 import fcntl
 import os
 import re
+import shutil
 import subprocess
 import uuid
 from datetime import datetime
@@ -13,6 +14,8 @@ from psycopg2.extras import execute_values
 from batdetect2 import api as bat_api
 
 LOCK_PATH = "/locks/audio_device.lock"
+UPLOAD_BAT_AUDIO = os.getenv("UPLOAD_BAT_AUDIO", "false").lower() == "true"
+BAT_AUDIO_DIR = "/bat_audio"
 
 
 class BatAudioCapture:
@@ -98,6 +101,14 @@ async def main():
             if detections:
                 print(f"[BAT] #{segment_count} | {len(detections)} bat call(s) detected!")
 
+                # Optionally save audio for dashboard playback
+                audio_saved_path = None
+                if UPLOAD_BAT_AUDIO:
+                    os.makedirs(BAT_AUDIO_DIR, exist_ok=True)
+                    audio_saved_path = f"{BAT_AUDIO_DIR}/{sync_id}.wav"
+                    shutil.copy2(audio_path, audio_saved_path)
+                    print(f"  -> Audio saved to {audio_saved_path}")
+
                 rows = []
                 for det in detections:
                     species = det.get("class", "Unknown")
@@ -116,14 +127,15 @@ async def main():
                     rows.append((
                         species, species, det_prob,
                         start, end, low_freq, high_freq, duration_ms,
-                        device_name, sync_id, detection_time
+                        device_name, sync_id, detection_time, audio_saved_path
                     ))
 
                 with conn.cursor() as cur:
                     execute_values(cur, """
                         INSERT INTO bat_detections
                         (species, common_name, detection_prob, start_time, end_time,
-                         low_freq, high_freq, duration_ms, device, sync_id, detection_time)
+                         low_freq, high_freq, duration_ms, device, sync_id,
+                         detection_time, audio_path)
                         VALUES %s
                     """, rows)
                 conn.commit()
@@ -136,6 +148,16 @@ async def main():
 
         except Exception as e:
             print(f"[BAT] Error in segment #{segment_count}: {e}")
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO capture_errors (service, error_type, message) "
+                        "VALUES (%s, %s, %s)",
+                        ("batdetect-service", type(e).__name__, str(e)[:500]),
+                    )
+                conn.commit()
+            except Exception:
+                pass
             await asyncio.sleep(5)
 
 
