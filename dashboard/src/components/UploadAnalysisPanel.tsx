@@ -20,6 +20,14 @@ interface AnalysisResponse {
   };
 }
 
+interface HealthResponse {
+  status: string;
+  models_loaded?: {
+    ast?: boolean;
+    batdetect2?: boolean;
+  };
+}
+
 function guessApiUrl(): string {
   if (typeof window === "undefined") return ENV_API_URL;
   if (ENV_API_URL) return ENV_API_URL;
@@ -43,8 +51,10 @@ export function UploadAnalysisPanel() {
   const [runBatdetectModel, setRunBatdetectModel] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -63,6 +73,40 @@ export function UploadAnalysisPanel() {
     if (!apiUrl.trim()) return "";
     return `${apiUrl.replace(/\/$/, "")}/analyze`;
   }, [apiUrl]);
+
+  async function handleConnectionTest() {
+    setError(null);
+    setConnectionStatus(null);
+
+    if (!apiUrl.trim()) {
+      setError("Enter a reachable Analysis API URL first.");
+      return;
+    }
+
+    setTestingConnection(true);
+    try {
+      const healthUrl = `${apiUrl.replace(/\/$/, "")}/health`;
+      const response = await fetch(healthUrl, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Connection test failed with ${response.status}`);
+      }
+
+      const data = (await response.json()) as HealthResponse;
+      const astLoaded = data.models_loaded?.ast ? "warm" : "cold";
+      const batLoaded = data.models_loaded?.batdetect2 ? "warm" : "cold";
+      setConnectionStatus(
+        `Connected to Analysis API · status=${data.status} · AST ${astLoaded} · BatDetect2 ${batLoaded}`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection test failed.");
+    } finally {
+      setTestingConnection(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -142,8 +186,18 @@ export function UploadAnalysisPanel() {
               placeholder="http://raspberrypi.local:8080"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+              The analysis models run <strong>on your Pi</strong>, not on Vercel —
+              your browser connects to it directly over your local network.
+            </p>
+            <ul className="text-xs text-gray-400 mt-1 space-y-0.5 list-disc list-inside">
+              <li>Same Wi-Fi: <code className="font-mono text-gray-600">http://raspberrypi.local:8080</code></li>
+              <li>By IP address: <code className="font-mono text-gray-600">http://192.168.x.x:8080</code></li>
+              <li>Browsing on the Pi: <code className="font-mono text-gray-600">http://localhost:8080</code></li>
+            </ul>
             <p className="text-xs text-gray-400 mt-1">
-              Use the Pi hostname or IP reachable from your browser, for example `http://raspberrypi.local:8080`.
+              Saved in this browser. To pre-fill permanently, set{" "}
+              <code className="font-mono text-gray-600">NEXT_PUBLIC_ANALYSIS_API_URL</code> in Vercel.
             </p>
           </div>
 
@@ -210,6 +264,14 @@ export function UploadAnalysisPanel() {
 
         <div className="flex items-center gap-3">
           <button
+            type="button"
+            onClick={handleConnectionTest}
+            disabled={testingConnection}
+            className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:bg-blue-50 disabled:text-blue-300"
+          >
+            {testingConnection ? "Testing…" : "Test Connection"}
+          </button>
+          <button
             type="submit"
             disabled={submitting}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
@@ -220,6 +282,12 @@ export function UploadAnalysisPanel() {
             <span className="text-sm text-gray-500 truncate">{selectedFile.name}</span>
           )}
         </div>
+
+        {connectionStatus && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 whitespace-pre-wrap">
+            {connectionStatus}
+          </div>
+        )}
 
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
