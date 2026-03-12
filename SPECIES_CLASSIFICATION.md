@@ -95,12 +95,33 @@ BatDetect2 supports fine-tuning. The approach keeps the detection backbone (whic
 | **OpenSoundscape** | Pittsburgh University | Supports custom classifiers, has NA bat examples, Python-based |
 | **NABat ML tools** | USGS | Classifiers being developed for the NABat national monitoring program |
 | **Kaleidoscope Pro** | Wildlife Acoustics | Commercial, auto-ID for NA bats, not open-source |
-| **SonoBat** | SonoBat Inc. | Commercial, widely used for NA bat surveys |
+| **SonoBat** | SonoBat Inc. | ⚠️ **Windows-only GUI** — cannot run on Pi or in Docker. Desktop validation only |
 
-Any of these could be integrated as a second classification step in the pipeline — run BatDetect2 for detection, then pass detected segments to an NA classifier for species ID.
+BattyBirdNET, OpenSoundscape, and NABat ML tools are Python-based and can run on the Pi inside Docker — meaning they slot into the existing architecture the same way BatDetect2 does. Kaleidoscope Pro and SonoBat are desktop-only and cannot be integrated into the automated pipeline.
 
-**Pros:** Pre-trained for North American species, no training needed  
+**Pros:** Pre-trained for North American species, no training needed (for BattyBirdNET/OpenSoundscape)  
 **Cons:** Integration work, may require different audio formats or dependencies
+
+---
+
+### ⚠️ SonoBat — Feasibility Assessment
+
+**Verdict: Not feasible for this edge pipeline. Use only as a desktop validation tool.**
+
+| Factor | Detail |
+|--------|--------|
+| **Platform** | Windows-only desktop GUI — cannot run on Raspberry Pi or inside Docker |
+| **No API/CLI** | No command-line interface, no Python library, no REST API — click-and-analyze only |
+| **License** | ~$400–500 per license, per machine, tied to Windows |
+| **Designed for** | Offline batch processing of recorded files on a desktop, not real-time edge analysis |
+| **Automation** | Has a batch mode but still requires the Windows GUI environment |
+
+**Where SonoBat *is* useful:** If you accumulate .wav files with bat detections (set `UPLOAD_BAT_AUDIO=true`), you can periodically download them and run SonoBat on a Windows computer to **validate and cross-check** BatDetect2 results. This is a useful human-in-the-loop workflow for building a labelled training dataset — but it's not pipeline integration.
+
+**Better alternatives for automated NA species ID on the Pi:**
+- **BattyBirdNET** — Python, pre-trained on NA bats, Docker-compatible
+- **OpenSoundscape** — Python, supports custom CNN classifiers, has NA bat examples
+- **Fine-tuned BatDetect2** — retrain the classifier head on NA data, keeps entire existing pipeline intact
 
 ---
 
@@ -115,6 +136,7 @@ Deploy as-is. Accumulate detections with raw acoustic features through the 2026 
 ### Phase 2 — Summer 2026
 - Review accumulated detections and audio clips
 - Cross-reference with NABat reference calls to manually label species
+- Optionally use SonoBat on a Windows desktop to validate/label recordings
 - Investigate BattyBirdNET or OpenSoundscape for a quick NA species classifier
 
 ### Phase 3 — Fall 2026
