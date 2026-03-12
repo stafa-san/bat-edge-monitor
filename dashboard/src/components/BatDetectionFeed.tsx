@@ -22,9 +22,16 @@ export function BatDetectionFeed({ detections }: BatDetectionFeedProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold text-purple-900 truncate">
-                    {det.species}
-                  </p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="font-semibold text-purple-900 truncate">
+                      {det.species}
+                    </p>
+                    {det.source === "upload" && (
+                      <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded shrink-0">
+                        UPLOAD
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full shrink-0">
                     {(det.detectionProb * 100).toFixed(0)}%
                   </span>
