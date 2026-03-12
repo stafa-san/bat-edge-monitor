@@ -7,10 +7,12 @@ CREATE TABLE IF NOT EXISTS classifications (
     device VARCHAR(100) NOT NULL,
     sync_id UUID NOT NULL,
     sync_time TIMESTAMP NOT NULL,
-    synced BOOLEAN DEFAULT FALSE
+    synced BOOLEAN DEFAULT FALSE,
+    source VARCHAR(20) DEFAULT 'live'
 );
 
 CREATE INDEX idx_class_sync_time ON classifications(sync_time);
+CREATE INDEX idx_class_source ON classifications(source);
 CREATE INDEX idx_class_device ON classifications(device);
 CREATE INDEX idx_class_label ON classifications(label);
 CREATE INDEX idx_class_synced ON classifications(synced);
@@ -29,10 +31,12 @@ CREATE TABLE IF NOT EXISTS bat_detections (
     device VARCHAR(100) NOT NULL,
     sync_id UUID NOT NULL,
     detection_time TIMESTAMP NOT NULL,
-    synced BOOLEAN DEFAULT FALSE
+    synced BOOLEAN DEFAULT FALSE,
+    source VARCHAR(20) DEFAULT 'live'
 );
 
 CREATE INDEX idx_bat_detection_time ON bat_detections(detection_time);
+CREATE INDEX idx_bat_source ON bat_detections(source);
 CREATE INDEX idx_bat_device ON bat_detections(device);
 CREATE INDEX idx_bat_species ON bat_detections(species);
 CREATE INDEX idx_bat_synced ON bat_detections(synced);
