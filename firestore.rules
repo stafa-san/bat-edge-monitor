@@ -1,0 +1,41 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Public read access for the dashboard ───
+    // The Next.js dashboard uses the client SDK with onSnapshot
+    // listeners to display live classifications, bat detections,
+    // and device health. No authentication is required.
+
+    // ─── Write access denied for all clients ───
+    // Only the Admin SDK (sync-service on the Pi) writes data.
+    // The Admin SDK bypasses security rules entirely, so denying
+    // client writes does not affect the pipeline.
+
+    match /classifications/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /batDetections/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /deviceStatus/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /healthHistory/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
