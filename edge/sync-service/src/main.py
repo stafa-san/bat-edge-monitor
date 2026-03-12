@@ -252,32 +252,32 @@ def sync_device_status(conn, db):
         # ── Detect offline gap ──
         # Read the current live doc to check when we were last seen
         doc_ref = db.collection("deviceStatus").document("edge-device")
-        current_doc = doc_ref.get()
-        if current_doc.exists:
-            prev = current_doc.to_dict()
-            prev_ts = prev.get("lastSeen")
-            if prev_ts:
-                # If the gap between now and lastSeen is > 3 minutes, we were offline
-                now_utc = datetime.now(timezone.utc)
-                # Firestore timestamps are tz-aware; ensure prev_ts is too
-                if hasattr(prev_ts, 'tzinfo') and prev_ts.tzinfo is None:
-                    prev_ts = prev_ts.replace(tzinfo=timezone.utc)
-                gap = now_utc - prev_ts
-                if gap.total_seconds() > 180:
-                    payload["lastOffline"] = prev_ts  # when we were last seen before going offline
-                    payload["lastOfflineDuration"] = round(gap.total_seconds())
+        try:
+            current_doc = doc_ref.get()
+            if current_doc.exists:
+                prev = current_doc.to_dict()
+                prev_ts = prev.get("lastSeen")
+                if prev_ts:
+                    now_utc = datetime.now(timezone.utc)
+                    # Firestore timestamps are tz-aware; ensure prev_ts is too
+                    if hasattr(prev_ts, 'tzinfo') and prev_ts.tzinfo is None:
+                        prev_ts = prev_ts.replace(tzinfo=timezone.utc)
+                    gap = now_utc - prev_ts
+                    if gap.total_seconds() > 180:
+                        payload["lastOffline"] = prev_ts
+                        payload["lastOfflineDuration"] = round(gap.total_seconds())
+                    else:
+                        if prev.get("lastOffline"):
+                            payload["lastOffline"] = prev["lastOffline"]
+                        if prev.get("lastOfflineDuration"):
+                            payload["lastOfflineDuration"] = prev["lastOfflineDuration"]
                 else:
-                    # Preserve previous offline info
                     if prev.get("lastOffline"):
                         payload["lastOffline"] = prev["lastOffline"]
                     if prev.get("lastOfflineDuration"):
                         payload["lastOfflineDuration"] = prev["lastOfflineDuration"]
-            else:
-                # Preserve previous offline info
-                if prev.get("lastOffline"):
-                    payload["lastOffline"] = prev["lastOffline"]
-                if prev.get("lastOfflineDuration"):
-                    payload["lastOfflineDuration"] = prev["lastOfflineDuration"]
+        except Exception as e:
+            print(f"[SYNC] Offline detection skipped: {e}")
 
         # Add lastSeen timestamp (always updated)
         payload["lastSeen"] = firestore.SERVER_TIMESTAMP
@@ -421,9 +421,8 @@ def main():
             audio_count = upload_bat_audio(conn, db)
             sync_device_status(conn, db)
 
-            if class_count > 0 or bat_count > 0:
-                print(f"[SYNC] Synced {class_count} classifications, {bat_count} bat detections "
-                      f"at {datetime.utcnow().isoformat()}")
+            now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, health ok ({now_str})")
             if audio_count > 0:
                 print(f"[SYNC] Uploaded {audio_count} bat audio file(s)")
 
