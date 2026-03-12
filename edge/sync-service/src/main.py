@@ -250,6 +250,7 @@ def sync_device_status(conn, db):
         conn.commit()
 
         # ── Build the payload once and reuse it ──
+        sample_rate = int(os.getenv("SAMPLE_RATE", "250000"))
         payload = {
             "uptimeSeconds": metrics["uptime_seconds"],
             "cpuTemp": metrics["cpu_temp"],
@@ -268,6 +269,7 @@ def sync_device_status(conn, db):
             "classificationsTotal": metrics["classifications_total"],
             "batDetectionsTotal": metrics["bat_detections_total"],
             "unsyncedCount": metrics["unsynced_count"],
+            "sampleRateHz": sample_rate,
             "recordedAt": firestore.SERVER_TIMESTAMP,
         }
 

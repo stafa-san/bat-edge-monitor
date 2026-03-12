@@ -17,6 +17,7 @@ import { BatDetectionFeed } from "@/components/BatDetectionFeed";
 import { StatsCards } from "@/components/StatsCards";
 import { SPLTimeline } from "@/components/SPLTimeline";
 import { DeviceHealth, type DeviceStatus, type HealthSnapshot, type HistoryRange } from "@/components/DeviceHealth";
+import { UploadAnalysisPanel } from "@/components/UploadAnalysisPanel";
 
 interface Classification {
   id: string;
@@ -234,6 +235,8 @@ export default function Dashboard() {
           onHistoryRangeChange={setHistoryRange}
         />
 
+        <UploadAnalysisPanel />
+
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SoundscapeChart classifications={classifications} />
@@ -276,7 +279,14 @@ export default function Dashboard() {
                     className="border-b border-gray-100 hover:bg-gray-50"
                   >
                     <td className="py-3 px-4 font-medium text-gray-900">
-                      {c.label}
+                      <div className="flex items-center gap-2">
+                        <span>{c.label}</span>
+                        {c.source === "upload" && (
+                          <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded shrink-0">
+                            UPLOAD
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">

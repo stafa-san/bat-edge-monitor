@@ -20,7 +20,8 @@ import librosa
 import numpy as np
 import psycopg2
 import soundfile as sf
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import execute_values
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,25 @@ app = FastAPI(
     description="Upload .wav files for AST + BatDetect2 analysis",
     version="1.0.0",
 )
+
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ANALYSIS_API_ALLOWED_ORIGINS", "*").split(",")
+    if origin.strip()
+]
+
+cors_kwargs = {
+    "allow_credentials": False,
+    "allow_methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["*"],
+}
+
+if allowed_origins == ["*"]:
+    cors_kwargs["allow_origin_regex"] = ".*"
+else:
+    cors_kwargs["allow_origins"] = allowed_origins
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 # ---------------------------------------------------------------------------
 #  Lazy-loaded models (saves RAM until first request)
@@ -193,10 +213,10 @@ def health():
 @app.post("/analyze")
 async def analyze(
     file: UploadFile = File(...),
-    run_ast_model: bool = True,
-    run_batdetect_model: bool = True,
-    top_k: int = 5,
-    device_label: Optional[str] = "upload",
+    run_ast_model: bool = Query(default=True),
+    run_batdetect_model: bool = Query(default=True),
+    top_k: int = Query(default=5),
+    device_label: Optional[str] = Query(default="upload"),
 ):
     """Upload a .wav file for AST + BatDetect2 analysis.
 

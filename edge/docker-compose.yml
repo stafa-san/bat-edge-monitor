@@ -11,7 +11,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      - SAMPLE_RATE=192000
+      - SAMPLE_RATE=250000
     volumes:
       - audio_lock:/locks
     depends_on:
@@ -31,7 +31,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      - SAMPLE_RATE=192000
+      - SAMPLE_RATE=250000
       - DETECTION_THRESHOLD=0.3
       - UPLOAD_BAT_AUDIO=false
     volumes:
@@ -51,6 +51,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - SYNC_INTERVAL=60
+      - SAMPLE_RATE=250000
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_STORAGE_BUCKET=bat-edge-monitor.firebasestorage.app
       - UPLOAD_BAT_AUDIO=false

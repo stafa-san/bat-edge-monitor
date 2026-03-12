@@ -25,6 +25,7 @@ export interface DeviceStatus {
   classificationsTotal: number;
   batDetectionsTotal: number;
   unsyncedCount: number;
+  sampleRateHz?: number;
   recordedAt: Timestamp;
   lastSeen?: Timestamp;
   lastOffline?: Timestamp;
@@ -97,6 +98,11 @@ function errorColor(n: number): string {
   if (n >= 5) return "text-red-600";
   if (n > 0) return "text-yellow-600";
   return "text-green-600";
+}
+
+function formatSampleRate(hz: number | null | undefined): string {
+  if (!hz) return "—";
+  return `${(hz / 1000).toFixed(0)} kHz`;
 }
 
 function tsToDate(ts: Timestamp | undefined | null): Date | null {
@@ -539,7 +545,7 @@ export function DeviceHealth({
         <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-1.5">
           🎙️ AudioMoth USB Microphone
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetricCard
             label="Status"
             value={status.audiomothConnected ? "Capturing" : "Inactive"}
@@ -547,6 +553,12 @@ export function DeviceHealth({
             color={
               status.audiomothConnected ? "text-green-600" : "text-red-600"
             }
+          />
+          <MetricCard
+            label="Sample Rate"
+            value={formatSampleRate(status.sampleRateHz)}
+            sub={status.sampleRateHz ? `${status.sampleRateHz.toLocaleString()} Hz` : undefined}
+            color="text-blue-600"
           />
           <MetricCard
             label="Database"
