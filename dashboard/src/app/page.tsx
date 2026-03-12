@@ -26,6 +26,7 @@ interface Classification {
   device: string;
   syncId: string;
   syncTime: Timestamp;
+  source?: string;
 }
 
 interface BatDetection {
@@ -39,6 +40,7 @@ interface BatDetection {
   device: string;
   detectionTime: Timestamp;
   audioUrl?: string;
+  source?: string;
 }
 
 export default function Dashboard() {

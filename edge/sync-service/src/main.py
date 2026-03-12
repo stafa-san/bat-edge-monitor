@@ -42,7 +42,8 @@ def sync_classifications(conn, db):
     """Sync unsynced classification records to Firestore."""
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT id, label, score, spl, device, sync_id, sync_time
+            SELECT id, label, score, spl, device, sync_id, sync_time,
+                   COALESCE(source, 'live') AS source
             FROM classifications
             WHERE synced = FALSE
             ORDER BY sync_time ASC
@@ -65,6 +66,7 @@ def sync_classifications(conn, db):
             "device": row[4],
             "syncId": row[5],
             "syncTime": row[6],
+            "source": row[7],
             "createdAt": firestore.SERVER_TIMESTAMP,
         })
         ids_to_mark.append(row[0])
@@ -88,7 +90,8 @@ def sync_bat_detections(conn, db):
         cur.execute("""
             SELECT id, species, common_name, detection_prob,
                    start_time, end_time, low_freq, high_freq,
-                   duration_ms, device, sync_id, detection_time
+                   duration_ms, device, sync_id, detection_time,
+                   COALESCE(source, 'live') AS source
             FROM bat_detections
             WHERE synced = FALSE
             ORDER BY detection_time ASC
@@ -116,6 +119,7 @@ def sync_bat_detections(conn, db):
             "device": row[9],
             "syncId": row[10],
             "detectionTime": row[11],
+            "source": row[12],
             "createdAt": firestore.SERVER_TIMESTAMP,
         })
         ids_to_mark.append(row[0])
@@ -187,6 +191,24 @@ def run_migrations(conn):
                     WHERE table_name = 'bat_detections' AND column_name = 'audio_url'
                 ) THEN
                     ALTER TABLE bat_detections ADD COLUMN audio_url TEXT;
+                END IF;
+            END $$;
+        """)
+        # Add source column for live vs upload distinction
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'classifications' AND column_name = 'source'
+                ) THEN
+                    ALTER TABLE classifications ADD COLUMN source VARCHAR(20) DEFAULT 'live';
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'bat_detections' AND column_name = 'source'
+                ) THEN
+                    ALTER TABLE bat_detections ADD COLUMN source VARCHAR(20) DEFAULT 'live';
                 END IF;
             END $$;
         """)

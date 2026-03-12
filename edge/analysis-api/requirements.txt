@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+numpy
+librosa
+soundfile
+torch
+torchaudio
+transformers
+batdetect2
+scikit-maad
+pandas
+psycopg2-binary
