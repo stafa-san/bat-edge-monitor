@@ -13,6 +13,30 @@ import psycopg2
 from psycopg2.extras import execute_values
 from batdetect2 import api as bat_api
 
+
+def get_db_connection():
+    """Create a new Postgres connection."""
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "db"),
+        dbname=os.getenv("DB_NAME", "soundscape"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD", "changeme"),
+    )
+
+
+def ensure_connection(conn):
+    """Return *conn* if it's alive, otherwise create a fresh connection."""
+    try:
+        conn.cursor().execute("SELECT 1")
+        return conn
+    except Exception:
+        print("[BAT] DB connection lost — reconnecting")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return get_db_connection()
+
 LOCK_PATH = "/locks/audio_device.lock"
 UPLOAD_BAT_AUDIO = os.getenv("UPLOAD_BAT_AUDIO", "false").lower() == "true"
 BAT_AUDIO_DIR = "/bat_audio"
@@ -72,12 +96,7 @@ async def main():
     config["detection_threshold"] = threshold
     print("[BAT] Model loaded successfully")
 
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "db"),
-        dbname=os.getenv("DB_NAME", "soundscape"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "changeme"),
-    )
+    conn = get_db_connection()
 
     print(f"[BAT] Monitoring started - threshold: {threshold}, segment: {segment_duration}s")
 
@@ -130,6 +149,7 @@ async def main():
                         device_name, sync_id, detection_time, audio_saved_path
                     ))
 
+                conn = ensure_connection(conn)
                 with conn.cursor() as cur:
                     execute_values(cur, """
                         INSERT INTO bat_detections
@@ -148,6 +168,7 @@ async def main():
 
         except Exception as e:
             print(f"[BAT] Error in segment #{segment_count}: {e}")
+            conn = ensure_connection(conn)
             try:
                 with conn.cursor() as cur:
                     cur.execute(

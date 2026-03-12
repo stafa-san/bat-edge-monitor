@@ -1,5 +1,7 @@
 import asyncio
 import os
+import signal
+import sys
 import uuid
 from datetime import datetime
 
@@ -10,6 +12,49 @@ from psycopg2.extras import execute_values
 from src.audio_device import AudioDevice
 from src.classifier import AudioClassifier
 from src.spl import calculate_sound_pressure_level
+
+
+def get_db_connection():
+    """Create a new Postgres connection."""
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "db"),
+        dbname=os.getenv("DB_NAME", "soundscape"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD", "changeme"),
+    )
+
+
+def ensure_connection(conn):
+    """Return *conn* if it's alive, otherwise create a fresh connection."""
+    try:
+        conn.cursor().execute("SELECT 1")
+        return conn
+    except Exception:
+        print("[AST] DB connection lost — reconnecting")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return get_db_connection()
+
+
+def flush_buffer(conn, buffer):
+    """Write pending rows to Postgres and clear the buffer."""
+    if not buffer:
+        return conn
+    conn = ensure_connection(conn)
+    try:
+        with conn.cursor() as cur:
+            execute_values(cur, """
+                INSERT INTO classifications (label, score, spl, device, sync_id, sync_time)
+                VALUES %s
+            """, buffer)
+        conn.commit()
+        print(f"[AST] Flushed {len(buffer)} records to local DB")
+        buffer.clear()
+    except Exception as e:
+        print(f"[AST] Flush failed: {e}")
+    return conn
 
 
 async def main():
@@ -24,17 +69,24 @@ async def main():
     classifier = AudioClassifier()
     print("[AST] Model loaded successfully")
 
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "db"),
-        dbname=os.getenv("DB_NAME", "soundscape"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "changeme"),
-    )
+    conn = get_db_connection()
 
     print(f"[AST] Monitoring started - device: {audio.name}, rate: {sample_rate} Hz")
 
     buffer = []
     sample_count = 0
+
+    # ── Flush buffer on SIGTERM (docker stop) ──
+    def handle_shutdown(signum, frame):
+        print(f"[AST] Received signal {signum} — flushing {len(buffer)} buffered rows")
+        try:
+            flush_buffer(conn, buffer)
+        except Exception as e:
+            print(f"[AST] Shutdown flush failed: {e}")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
 
     async for sample in audio.continuous_capture(sample_duration=1, capture_delay=0):
         try:
@@ -56,17 +108,11 @@ async def main():
                 ))
 
             if len(buffer) >= 25:
-                with conn.cursor() as cur:
-                    execute_values(cur, """
-                        INSERT INTO classifications (label, score, spl, device, sync_id, sync_time)
-                        VALUES %s
-                    """, buffer)
-                conn.commit()
-                print(f"[AST] Synced {len(buffer)} records to local DB")
-                buffer.clear()
+                conn = flush_buffer(conn, buffer)
 
         except Exception as e:
             print(f"[AST] Error processing sample #{sample_count}: {e}")
+            conn = ensure_connection(conn)
             try:
                 with conn.cursor() as cur:
                     cur.execute(
