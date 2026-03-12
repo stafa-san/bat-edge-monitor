@@ -83,6 +83,22 @@ services:
       timeout: 5s
       retries: 5
 
+  analysis-api:
+    build: ./analysis-api
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=db
+      - DB_NAME=soundscape
+      - DB_USER=postgres
+      - DB_PASSWORD=changeme
+      - DETECTION_THRESHOLD=0.3
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
   audio_lock:
