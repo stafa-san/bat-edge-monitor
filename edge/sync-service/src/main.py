@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import firebase_admin
 import psycopg2
@@ -199,7 +199,11 @@ def run_migrations(conn):
 # ---------------------------------------------------------------------------
 
 def sync_device_status(conn, db):
-    """Collect device metrics, store locally, and push to Firestore."""
+    """Collect device metrics, store locally, and push to Firestore.
+
+    Also writes a health-history snapshot for historical graphs and
+    tracks last-seen / last-offline timestamps on the live status doc.
+    """
     try:
         metrics = collect_all_metrics(conn)
 
@@ -223,9 +227,8 @@ def sync_device_status(conn, db):
             """, metrics)
         conn.commit()
 
-        # Overwrite a single Firestore document for the edge device
-        doc_ref = db.collection("deviceStatus").document("edge-device")
-        doc_ref.set({
+        # ── Build the payload once and reuse it ──
+        payload = {
             "uptimeSeconds": metrics["uptime_seconds"],
             "cpuTemp": metrics["cpu_temp"],
             "cpuLoad1m": metrics["cpu_load_1m"],
@@ -244,7 +247,47 @@ def sync_device_status(conn, db):
             "batDetectionsTotal": metrics["bat_detections_total"],
             "unsyncedCount": metrics["unsynced_count"],
             "recordedAt": firestore.SERVER_TIMESTAMP,
-        })
+        }
+
+        # ── Detect offline gap ──
+        # Read the current live doc to check when we were last seen
+        doc_ref = db.collection("deviceStatus").document("edge-device")
+        current_doc = doc_ref.get()
+        if current_doc.exists:
+            prev = current_doc.to_dict()
+            prev_ts = prev.get("lastSeen")
+            if prev_ts:
+                # If the gap between now and lastSeen is > 3 minutes, we were offline
+                now_utc = datetime.now(timezone.utc)
+                # Firestore timestamps are tz-aware; ensure prev_ts is too
+                if hasattr(prev_ts, 'tzinfo') and prev_ts.tzinfo is None:
+                    prev_ts = prev_ts.replace(tzinfo=timezone.utc)
+                gap = now_utc - prev_ts
+                if gap.total_seconds() > 180:
+                    payload["lastOffline"] = prev_ts  # when we were last seen before going offline
+                    payload["lastOfflineDuration"] = round(gap.total_seconds())
+                else:
+                    # Preserve previous offline info
+                    if prev.get("lastOffline"):
+                        payload["lastOffline"] = prev["lastOffline"]
+                    if prev.get("lastOfflineDuration"):
+                        payload["lastOfflineDuration"] = prev["lastOfflineDuration"]
+            else:
+                # Preserve previous offline info
+                if prev.get("lastOffline"):
+                    payload["lastOffline"] = prev["lastOffline"]
+                if prev.get("lastOfflineDuration"):
+                    payload["lastOfflineDuration"] = prev["lastOfflineDuration"]
+
+        # Add lastSeen timestamp (always updated)
+        payload["lastSeen"] = firestore.SERVER_TIMESTAMP
+
+        # Overwrite the live status document
+        doc_ref.set(payload)
+
+        # ── Write a health-history snapshot ──
+        db.collection("healthHistory").add(payload)
+
     except Exception as e:
         print(f"[SYNC] Device status error: {e}")
 

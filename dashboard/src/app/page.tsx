@@ -8,6 +8,7 @@ import {
   query,
   orderBy,
   limit,
+  where,
   onSnapshot,
   Timestamp,
 } from "firebase/firestore";
@@ -15,7 +16,7 @@ import { SoundscapeChart } from "@/components/SoundscapeChart";
 import { BatDetectionFeed } from "@/components/BatDetectionFeed";
 import { StatsCards } from "@/components/StatsCards";
 import { SPLTimeline } from "@/components/SPLTimeline";
-import { DeviceHealth, type DeviceStatus } from "@/components/DeviceHealth";
+import { DeviceHealth, type DeviceStatus, type HealthSnapshot, type HistoryRange } from "@/components/DeviceHealth";
 
 interface Classification {
   id: string;
@@ -44,6 +45,8 @@ export default function Dashboard() {
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [batDetections, setBatDetections] = useState<BatDetection[]>([]);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
+  const [healthHistory, setHealthHistory] = useState<HealthSnapshot[]>([]);
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("1h");
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -136,6 +139,55 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Health history listener — depends on historyRange so it re-subscribes
+  useEffect(() => {
+    const rangeMs: Record<HistoryRange, number> = {
+      "1h": 60 * 60 * 1000,
+      "6h": 6 * 60 * 60 * 1000,
+      "24h": 24 * 60 * 60 * 1000,
+      "7d": 7 * 24 * 60 * 60 * 1000,
+    };
+    const since = Timestamp.fromDate(new Date(Date.now() - rangeMs[historyRange]));
+
+    const historyQuery = query(
+      collection(db, "healthHistory"),
+      where("recordedAt", ">=", since),
+      orderBy("recordedAt", "asc"),
+      limit(500)
+    );
+
+    const unsubHistory = onSnapshot(
+      historyQuery,
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as HealthSnapshot[];
+        setHealthHistory(data);
+      },
+      (error) => {
+        console.error("[Firestore] Health history error:", error);
+        // Fallback without ordering
+        const fallbackQuery = query(
+          collection(db, "healthHistory"),
+          where("recordedAt", ">=", since),
+          limit(500)
+        );
+        onSnapshot(fallbackQuery, (snapshot) => {
+          const data = snapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          })) as HealthSnapshot[];
+          setHealthHistory(data);
+        });
+      }
+    );
+
+    return () => {
+      unsubHistory();
+    };
+  }, [historyRange]);
+
   return (
     <main className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -173,7 +225,12 @@ export default function Dashboard() {
         />
 
         {/* Device Health */}
-        <DeviceHealth status={deviceStatus} />
+        <DeviceHealth
+          status={deviceStatus}
+          history={healthHistory}
+          historyRange={historyRange}
+          onHistoryRangeChange={setHistoryRange}
+        />
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
