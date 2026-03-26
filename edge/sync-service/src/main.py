@@ -136,6 +136,50 @@ def sync_bat_detections(conn, db):
     return len(rows)
 
 
+def sync_environmental_readings(conn, db):
+    """Sync unsynced HOBO MX2201 temperature readings to Firestore."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, temperature_c, sensor_address, sensor_serial,
+                   sensor_model, rssi, recorded_at
+            FROM environmental_readings
+            WHERE synced = FALSE
+            ORDER BY recorded_at ASC
+            LIMIT 500
+        """)
+        rows = cur.fetchall()
+
+    if not rows:
+        return 0
+
+    batch = db.batch()
+    ids_to_mark = []
+
+    for row in rows:
+        doc_ref = db.collection("environmentalReadings").document()
+        batch.set(doc_ref, {
+            "temperatureC": row[1],
+            "sensorAddress": row[2],
+            "sensorSerial": row[3],
+            "sensorModel": row[4],
+            "rssi": row[5],
+            "recordedAt": row[6],
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        })
+        ids_to_mark.append(row[0])
+
+    batch.commit()
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE environmental_readings SET synced = TRUE WHERE id = ANY(%s)",
+            (ids_to_mark,)
+        )
+    conn.commit()
+
+    return len(rows)
+
+
 # ---------------------------------------------------------------------------
 #  Database migrations (idempotent — safe to run every startup)
 # ---------------------------------------------------------------------------
@@ -211,6 +255,43 @@ def run_migrations(conn):
                     ALTER TABLE bat_detections ADD COLUMN source VARCHAR(20) DEFAULT 'live';
                 END IF;
             END $$;
+        """)
+        # Environmental readings table (HOBO MX2201 BLE sensor)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS environmental_readings (
+                id SERIAL PRIMARY KEY,
+                temperature_c FLOAT NOT NULL,
+                sensor_address VARCHAR(20),
+                sensor_serial VARCHAR(50),
+                sensor_model VARCHAR(50),
+                rssi INTEGER,
+                recorded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                synced BOOLEAN DEFAULT FALSE
+            )
+        """)
+        # Add sensor_address column if missing (existing databases)
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'environmental_readings' AND column_name = 'sensor_address'
+                ) THEN
+                    ALTER TABLE environmental_readings ADD COLUMN sensor_address VARCHAR(20);
+                END IF;
+            END $$;
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_env_recorded_at
+            ON environmental_readings(recorded_at)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_env_synced
+            ON environmental_readings(synced)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_env_sensor_address
+            ON environmental_readings(sensor_address)
         """)
     conn.commit()
     print("[SYNC] Database migrations complete")
@@ -404,6 +485,11 @@ def cleanup_old_data(conn):
             )
             c2 = cur.rowcount
             cur.execute(
+                "DELETE FROM environmental_readings "
+                "WHERE synced = TRUE AND recorded_at < NOW() - INTERVAL '30 days'"
+            )
+            c3 = cur.rowcount
+            cur.execute(
                 "DELETE FROM device_status "
                 "WHERE recorded_at < NOW() - INTERVAL '7 days'"
             )
@@ -412,8 +498,8 @@ def cleanup_old_data(conn):
                 "WHERE recorded_at < NOW() - INTERVAL '7 days'"
             )
         conn.commit()
-        if c1 or c2:
-            print(f"[SYNC] Retention cleanup: {c1} classifications, {c2} bat detections")
+        if c1 or c2 or c3:
+            print(f"[SYNC] Retention cleanup: {c1} classifications, {c2} bat detections, {c3} env readings")
     except Exception as e:
         print(f"[SYNC] Retention cleanup error: {e}")
 
@@ -442,11 +528,12 @@ def main():
 
             class_count = sync_classifications(conn, db)
             bat_count = sync_bat_detections(conn, db)
+            env_count = sync_environmental_readings(conn, db)
             audio_count = upload_bat_audio(conn, db)
             sync_device_status(conn, db)
 
             now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, health ok ({now_str})")
+            print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, {env_count} env, health ok ({now_str})")
             if audio_count > 0:
                 print(f"[SYNC] Uploaded {audio_count} bat audio file(s)")
 
