@@ -67,6 +67,22 @@ CREATE TABLE IF NOT EXISTS device_status (
 
 CREATE INDEX idx_device_status_recorded ON device_status(recorded_at);
 
+-- Environmental sensor readings (HOBO MX2201 BLE temperature loggers)
+CREATE TABLE IF NOT EXISTS environmental_readings (
+    id SERIAL PRIMARY KEY,
+    temperature_c FLOAT NOT NULL,
+    sensor_address VARCHAR(20),
+    sensor_serial VARCHAR(50),
+    sensor_model VARCHAR(50),
+    rssi INTEGER,
+    recorded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    synced BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX idx_env_recorded_at ON environmental_readings(recorded_at);
+CREATE INDEX idx_env_synced ON environmental_readings(synced);
+CREATE INDEX idx_env_sensor_address ON environmental_readings(sensor_address);
+
 -- Capture error log (written by ast-service and batdetect-service)
 CREATE TABLE IF NOT EXISTS capture_errors (
     id SERIAL PRIMARY KEY,
