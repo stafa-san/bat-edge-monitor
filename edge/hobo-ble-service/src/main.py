@@ -19,6 +19,7 @@ Environment variables:
 import asyncio
 import os
 import signal
+import struct
 import sys
 import psycopg2
 from datetime import datetime, timezone
@@ -96,11 +97,21 @@ def decode_temperature(data: bytes) -> float | None:
     return round(raw_byte * TEMP_SCALE + TEMP_OFFSET, 3)
 
 
-def extract_serial(name: str) -> str:
-    """Try to extract serial number from device name.
+def extract_serial_from_bytes(data: bytes) -> str:
+    """Extract serial number from Onset manufacturer data.
 
-    HOBO devices advertise as e.g. "MX Temp 20515200" or "HOBO MX2201".
+    The serial is encoded as a uint32 little-endian at bytes[1:5].
+    Example: 0a 80 09 39 01 ... → LE uint32 at [1:5] = 0x01390980 = 20515200
     """
+    if data and len(data) >= 5:
+        serial = struct.unpack_from("<I", data, 1)[0]
+        if 10000000 < serial < 99999999:  # Reasonable serial range
+            return str(serial)
+    return ""
+
+
+def extract_serial_from_name(name: str) -> str:
+    """Try to extract serial number from BLE device name as fallback."""
     if not name:
         return ""
     parts = name.split()
@@ -118,7 +129,7 @@ def on_advertisement(device: BLEDevice, adv: AdvertisementData):
 
     addr = device.address
     name = device.name or adv.local_name or ""
-    serial = extract_serial(name)
+    serial = extract_serial_from_bytes(hobo_data) or extract_serial_from_name(name)
 
     # Cache serial once discovered (BLE name resolution is intermittent on Linux)
     if serial and addr not in serial_cache:
