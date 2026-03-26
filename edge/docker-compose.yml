@@ -84,6 +84,25 @@ services:
       timeout: 5s
       retries: 5
 
+  hobo-ble-service:
+    build: ./hobo-ble-service
+    privileged: true
+    network_mode: host
+    volumes:
+      - /var/run/dbus:/var/run/dbus
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=localhost
+      - DB_NAME=soundscape
+      - DB_USER=postgres
+      - DB_PASSWORD=changeme
+      - HOBO_MODEL=${HOBO_MODEL:-MX2201}
+      - HOBO_POLL_INTERVAL=${HOBO_POLL_INTERVAL:-30}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   analysis-api:
     build: ./analysis-api
     environment:
