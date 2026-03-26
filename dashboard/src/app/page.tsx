@@ -18,6 +18,7 @@ import { StatsCards } from "@/components/StatsCards";
 import { SPLTimeline } from "@/components/SPLTimeline";
 import { DeviceHealth, type DeviceStatus, type HealthSnapshot, type HistoryRange } from "@/components/DeviceHealth";
 import { UploadAnalysisPanel } from "@/components/UploadAnalysisPanel";
+import { EnvironmentalPanel, type EnvironmentalReading, type EnvTimeRange } from "@/components/EnvironmentalPanel";
 
 interface Classification {
   id: string;
@@ -50,6 +51,8 @@ export default function Dashboard() {
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
   const [healthHistory, setHealthHistory] = useState<HealthSnapshot[]>([]);
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1h");
+  const [environmentalReadings, setEnvironmentalReadings] = useState<EnvironmentalReading[]>([]);
+  const [envTimeRange, setEnvTimeRange] = useState<EnvTimeRange>("6h");
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -141,6 +144,54 @@ export default function Dashboard() {
       unsubStatus();
     };
   }, []);
+
+  // Environmental readings listener — depends on envTimeRange so it re-subscribes
+  useEffect(() => {
+    const rangeMs: Record<EnvTimeRange, number> = {
+      "1h": 60 * 60 * 1000,
+      "6h": 6 * 60 * 60 * 1000,
+      "24h": 24 * 60 * 60 * 1000,
+      "7d": 7 * 24 * 60 * 60 * 1000,
+    };
+    const since = Timestamp.fromDate(new Date(Date.now() - rangeMs[envTimeRange]));
+
+    const envQuery = query(
+      collection(db, "environmentalReadings"),
+      where("recordedAt", ">=", since),
+      orderBy("recordedAt", "desc"),
+      limit(2000)
+    );
+
+    const unsubEnv = onSnapshot(
+      envQuery,
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as EnvironmentalReading[];
+        setEnvironmentalReadings(data);
+      },
+      (error) => {
+        console.error("[Firestore] Environmental readings error:", error);
+        const fallbackQuery = query(
+          collection(db, "environmentalReadings"),
+          where("recordedAt", ">=", since),
+          limit(2000)
+        );
+        onSnapshot(fallbackQuery, (snapshot) => {
+          const data = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as EnvironmentalReading[];
+          setEnvironmentalReadings(data);
+        });
+      }
+    );
+
+    return () => {
+      unsubEnv();
+    };
+  }, [envTimeRange]);
 
   // Health history listener — depends on historyRange so it re-subscribes
   useEffect(() => {
@@ -236,6 +287,13 @@ export default function Dashboard() {
         />
 
         <UploadAnalysisPanel />
+
+        {/* Environmental Panel */}
+        <EnvironmentalPanel
+          readings={environmentalReadings}
+          timeRange={envTimeRange}
+          onTimeRangeChange={setEnvTimeRange}
+        />
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
