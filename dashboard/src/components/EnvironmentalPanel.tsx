@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -35,6 +35,12 @@ interface EnvironmentalPanelProps {
   onTimeRangeChange: (r: EnvTimeRange) => void;
 }
 
+interface SensorLocation {
+  lat: string;
+  lng: string;
+  label: string;
+}
+
 // ── Constants ────────────────────────────────────────────────────────────
 
 const SENSOR_COLORS = [
@@ -55,7 +61,40 @@ const RANGE_LABELS: Record<EnvTimeRange, string> = {
   "7d": "7D",
 };
 
+const ALIAS_STORAGE_KEY = "env-sensor-aliases";
+const LOCATION_STORAGE_KEY = "env-sensor-locations";
+
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+function cToF(c: number): number {
+  return c * 9 / 5 + 32;
+}
+
+function loadAliases(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(ALIAS_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveAliases(aliases: Record<string, string>) {
+  localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(aliases));
+}
+
+function loadLocations(): Record<string, SensorLocation> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(LOCATION_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveLocations(locations: Record<string, SensorLocation>) {
+  localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(locations));
+}
 
 function signalStrength(rssi: number | undefined): { label: string; bars: number; color: string } {
   if (rssi == null) return { label: "N/A", bars: 0, color: "text-gray-300" };
@@ -81,6 +120,22 @@ function SignalBars({ bars }: { bars: number }) {
   );
 }
 
+/** Returns display name for a sensor: alias > serial > address suffix */
+function sensorDisplayName(
+  address: string,
+  serial: string,
+  aliases: Record<string, string>
+): { primary: string; secondary: string | null } {
+  const alias = aliases[address];
+  if (alias) {
+    return { primary: alias, secondary: serial !== address.slice(-8) ? serial : null };
+  }
+  if (serial && serial !== address.slice(-8)) {
+    return { primary: serial, secondary: null };
+  }
+  return { primary: address.slice(-8), secondary: null };
+}
+
 interface SensorSummary {
   address: string;
   serial: string;
@@ -95,6 +150,116 @@ interface SensorSummary {
   maxTemp: number;
 }
 
+// ── Inline edit components ───────────────────────────────────────────────
+
+function AliasEditor({
+  address,
+  currentAlias,
+  onSave,
+  onClose,
+}: {
+  address: string;
+  currentAlias: string;
+  onSave: (address: string, alias: string) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(currentAlias);
+  return (
+    <div className="absolute z-10 top-0 left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg p-3 space-y-2">
+      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+        Sensor Alias
+      </label>
+      <input
+        autoFocus
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="e.g. Cave Entrance"
+        className="w-full px-2 py-1 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-400"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { onSave(address, value.trim()); onClose(); }
+          if (e.key === "Escape") onClose();
+        }}
+      />
+      <div className="flex justify-end gap-1">
+        <button onClick={onClose} className="px-2 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">
+          Cancel
+        </button>
+        <button
+          onClick={() => { onSave(address, value.trim()); onClose(); }}
+          className="px-2 py-0.5 text-[10px] bg-orange-500 text-white rounded hover:bg-orange-600"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LocationEditor({
+  address,
+  current,
+  onSave,
+  onClose,
+}: {
+  address: string;
+  current: SensorLocation | undefined;
+  onSave: (address: string, loc: SensorLocation) => void;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(current?.label || "");
+  const [lat, setLat] = useState(current?.lat || "");
+  const [lng, setLng] = useState(current?.lng || "");
+  return (
+    <div className="absolute z-10 top-0 left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg p-3 space-y-2">
+      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+        Location
+      </label>
+      <input
+        autoFocus
+        type="text"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="Label (e.g. Cave Entrance)"
+        className="w-full px-2 py-1 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-400"
+      />
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={lat}
+          onChange={(e) => setLat(e.target.value)}
+          placeholder="Latitude"
+          className="w-1/2 px-2 py-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-400"
+        />
+        <input
+          type="text"
+          value={lng}
+          onChange={(e) => setLng(e.target.value)}
+          placeholder="Longitude"
+          className="w-1/2 px-2 py-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-400"
+        />
+      </div>
+      <div className="flex justify-end gap-1">
+        <button onClick={onClose} className="px-2 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            onSave(address, { label: label.trim(), lat: lat.trim(), lng: lng.trim() });
+            onClose();
+          }}
+          className="px-2 py-0.5 text-[10px] bg-orange-500 text-white rounded hover:bg-orange-600"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+          }}
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────
 
 export function EnvironmentalPanel({
@@ -102,6 +267,49 @@ export function EnvironmentalPanel({
   timeRange,
   onTimeRangeChange,
 }: EnvironmentalPanelProps) {
+  // Alias & location state (localStorage-backed)
+  const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [locations, setLocations] = useState<Record<string, SensorLocation>>({});
+  const [editingAlias, setEditingAlias] = useState<string | null>(null);
+  const [editingLocation, setEditingLocation] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAliases(loadAliases());
+    setLocations(loadLocations());
+  }, []);
+
+  const handleSaveAlias = useCallback((address: string, alias: string) => {
+    setAliases((prev) => {
+      const next = { ...prev };
+      if (alias) {
+        next[address] = alias;
+      } else {
+        delete next[address];
+      }
+      saveAliases(next);
+      return next;
+    });
+  }, []);
+
+  const handleSaveLocation = useCallback((address: string, loc: SensorLocation) => {
+    setLocations((prev) => {
+      const next = { ...prev, [address]: loc };
+      saveLocations(next);
+      return next;
+    });
+  }, []);
+
+  // Build a display-label lookup for use in chart tooltip/legend
+  const getChartLabel = useCallback(
+    (address: string, sensors: SensorSummary[]) => {
+      const sensor = sensors.find((s) => s.address === address);
+      if (!sensor) return address.slice(-8);
+      const { primary } = sensorDisplayName(address, sensor.serial, aliases);
+      return primary;
+    },
+    [aliases]
+  );
+
   // Group by sensor
   const sensors = useMemo<SensorSummary[]>(() => {
     const map = new Map<string, EnvironmentalReading[]>();
@@ -141,11 +349,10 @@ export function EnvironmentalPanel({
     return result.sort((a, b) => a.serial.localeCompare(b.serial));
   }, [readings]);
 
-  // Build unified chart data
+  // Build unified chart data (values stored as °F for chart)
   const chartData = useMemo(() => {
     if (sensors.length === 0) return [];
 
-    // Collect all unique timestamps, bucket by time label
     const timeFormat = timeRange === "7d" ? "MM/dd HH:mm" : "HH:mm";
     const allPoints = new Map<string, Record<string, number | string>>();
 
@@ -155,7 +362,7 @@ export function EnvironmentalPanel({
         if (!allPoints.has(label)) {
           allPoints.set(label, { time: label, _ts: time.getTime() as unknown as string });
         }
-        allPoints.get(label)![`temp_${sensor.address}`] = temp;
+        allPoints.get(label)![`temp_${sensor.address}`] = parseFloat(cToF(temp).toFixed(1));
       }
     }
 
@@ -172,9 +379,10 @@ export function EnvironmentalPanel({
         "#": i + 1,
         "Date-Time": format(r.time, "MM/dd/yyyy HH:mm:ss"),
         "Temperature (°C)": r.temp,
+        "Temperature (°F)": parseFloat(cToF(r.temp).toFixed(1)),
       }));
       const ws = XLSX.utils.json_to_sheet(data);
-      ws["!cols"] = [{ wch: 6 }, { wch: 22 }, { wch: 18 }];
+      ws["!cols"] = [{ wch: 6 }, { wch: 22 }, { wch: 18 }, { wch: 18 }];
       const sheetName = (sensor.serial || sensor.address).slice(0, 31);
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     }
@@ -237,13 +445,35 @@ export function EnvironmentalPanel({
           <div className="flex gap-3 overflow-x-auto pb-1">
             {sensors.map((s) => {
               const sig = signalStrength(s.latestRssi);
-              const tempF = s.latestTemp * 9 / 5 + 32;
+              const tempF = cToF(s.latestTemp);
+              const { primary, secondary } = sensorDisplayName(s.address, s.serial, aliases);
+              const location = locations[s.address];
               return (
                 <div
                   key={s.address}
-                  className="flex-shrink-0 min-w-[200px] rounded-xl border border-gray-200
+                  className="relative flex-shrink-0 min-w-[200px] rounded-xl border border-gray-200
                              bg-gradient-to-br from-gray-50 to-white p-4 space-y-3"
                 >
+                  {/* Alias editor overlay */}
+                  {editingAlias === s.address && (
+                    <AliasEditor
+                      address={s.address}
+                      currentAlias={aliases[s.address] || ""}
+                      onSave={handleSaveAlias}
+                      onClose={() => setEditingAlias(null)}
+                    />
+                  )}
+
+                  {/* Location editor overlay */}
+                  {editingLocation === s.address && (
+                    <LocationEditor
+                      address={s.address}
+                      current={locations[s.address]}
+                      onSave={handleSaveLocation}
+                      onClose={() => setEditingLocation(null)}
+                    />
+                  )}
+
                   {/* Header */}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
@@ -252,9 +482,17 @@ export function EnvironmentalPanel({
                         style={{ backgroundColor: s.color }}
                       />
                       <div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          SN {s.serial}
-                        </p>
+                        <button
+                          onClick={() => setEditingAlias(s.address)}
+                          title="Click to set alias"
+                          className="text-sm font-semibold text-gray-900 hover:text-orange-600
+                                     transition-colors cursor-pointer text-left leading-tight"
+                        >
+                          {primary}
+                        </button>
+                        {secondary && (
+                          <p className="text-[10px] text-gray-400">{secondary}</p>
+                        )}
                         <p className="text-[10px] text-gray-400">{s.model}</p>
                       </div>
                     </div>
@@ -264,27 +502,58 @@ export function EnvironmentalPanel({
                     </div>
                   </div>
 
-                  {/* Temperature */}
+                  {/* Location badge */}
+                  <div className="flex items-center gap-1">
+                    {location?.label ? (
+                      <button
+                        onClick={() => setEditingLocation(s.address)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]
+                                   bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
+                        title={location.lat && location.lng ? `${location.lat}, ${location.lng}` : "Edit location"}
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                        </svg>
+                        {location.label}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setEditingLocation(s.address)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]
+                                   text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                        title="Add location"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                        </svg>
+                        Add location
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Temperature — °F primary, °C secondary */}
                   <div className="text-center py-1">
                     <p className="text-3xl font-bold" style={{ color: s.color }}>
-                      {s.latestTemp.toFixed(1)}
-                      <span className="text-lg font-normal text-gray-400">°C</span>
+                      {tempF.toFixed(1)}
+                      <span className="text-lg font-normal text-gray-400">°F</span>
                     </p>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {tempF.toFixed(1)}°F
+                      {s.latestTemp.toFixed(1)}°C
                     </p>
                   </div>
 
-                  {/* Stats */}
+                  {/* Stats (°F) */}
                   <div className="flex justify-between text-[10px] text-gray-500 border-t border-gray-100 pt-2">
                     <span>
-                      Min <strong className="text-blue-600">{s.minTemp.toFixed(1)}°</strong>
+                      Min <strong className="text-blue-600">{cToF(s.minTemp).toFixed(1)}°F</strong>
                     </span>
                     <span>
-                      Avg <strong className="text-gray-700">{s.avgTemp.toFixed(1)}°</strong>
+                      Avg <strong className="text-gray-700">{cToF(s.avgTemp).toFixed(1)}°F</strong>
                     </span>
                     <span>
-                      Max <strong className="text-red-500">{s.maxTemp.toFixed(1)}°</strong>
+                      Max <strong className="text-red-500">{cToF(s.maxTemp).toFixed(1)}°F</strong>
                     </span>
                   </div>
 
@@ -315,7 +584,7 @@ export function EnvironmentalPanel({
                 tick={{ fontSize: 11 }}
                 domain={["auto", "auto"]}
                 label={{
-                  value: "°C",
+                  value: "°F",
                   angle: -90,
                   position: "insideLeft",
                   style: { fontSize: 12, fill: "#9ca3af" },
@@ -330,17 +599,16 @@ export function EnvironmentalPanel({
                 }}
                 formatter={(value: number, name: string) => {
                   const addr = name.replace("temp_", "");
-                  const sensor = sensors.find((s) => s.address === addr);
-                  const label = sensor ? `SN ${sensor.serial}` : addr.slice(-8);
-                  return [`${value}°C / ${(value * 9/5 + 32).toFixed(1)}°F`, label];
+                  const label = getChartLabel(addr, sensors);
+                  const tempC = (value - 32) * 5 / 9;
+                  return [`${value}°F / ${tempC.toFixed(1)}°C`, label];
                 }}
                 labelStyle={{ fontWeight: "bold" }}
               />
               <Legend
                 formatter={(value: string) => {
                   const addr = value.replace("temp_", "");
-                  const sensor = sensors.find((s) => s.address === addr);
-                  return sensor ? `SN ${sensor.serial}` : addr.slice(-8);
+                  return getChartLabel(addr, sensors);
                 }}
                 wrapperStyle={{ fontSize: 11 }}
               />

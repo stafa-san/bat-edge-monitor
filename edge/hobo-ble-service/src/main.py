@@ -42,6 +42,8 @@ TEMP_BYTE_INDEX = 13
 # ── State: one entry per BLE address ──────────────────────────────────────
 latest_readings: dict[str, dict] = {}
 discovered: set[str] = set()
+# Persistent serial mapping — once we learn a serial, we keep it
+serial_cache: dict[str, str] = {}
 
 
 def get_db_connection():
@@ -116,16 +118,22 @@ def on_advertisement(device: BLEDevice, adv: AdvertisementData):
 
     addr = device.address
     name = device.name or adv.local_name or ""
+    serial = extract_serial(name)
+
+    # Cache serial once discovered (BLE name resolution is intermittent on Linux)
+    if serial and addr not in serial_cache:
+        serial_cache[addr] = serial
+        print(f"[HOBO] Learned serial for {addr}: {serial}")
+    resolved_serial = serial or serial_cache.get(addr, "")
 
     # Log discovery info on first detection per device
     if addr not in discovered:
         discovered.add(addr)
         temp = decode_temperature(hobo_data)
         temp_str = f"{temp:.2f}°C / {temp * 9/5 + 32:.1f}°F" if temp else "N/A"
-        serial = extract_serial(name)
         print(f"[HOBO] Found sensor: {name or addr}")
         print(f"[HOBO]   Address: {addr}")
-        print(f"[HOBO]   Serial: {serial or '(unknown)'}")
+        print(f"[HOBO]   Serial: {resolved_serial or '(unknown — name not yet resolved)'}")
         print(f"[HOBO]   RSSI: {adv.rssi} dBm")
         print(f"[HOBO]   Raw ({len(hobo_data)} bytes): {hobo_data.hex()}")
         print(f"[HOBO]   Temp byte[{TEMP_BYTE_INDEX}] = {hobo_data[TEMP_BYTE_INDEX]} → {temp_str}")
@@ -137,7 +145,7 @@ def on_advertisement(device: BLEDevice, adv: AdvertisementData):
         latest_readings[addr] = {
             "temp_c": temp,
             "rssi": adv.rssi,
-            "serial": extract_serial(name),
+            "serial": resolved_serial,
             "model": DEFAULT_MODEL,
             "name": name,
             "raw_hex": hobo_data.hex(),
@@ -152,7 +160,11 @@ async def poll_loop():
     print(f"[HOBO] Temp formula: byte[{TEMP_BYTE_INDEX}] × {TEMP_SCALE} + {TEMP_OFFSET}")
     print(f"[HOBO] Listening for all Onset HOBO sensors in range...")
 
-    scanner = BleakScanner(detection_callback=on_advertisement)
+    # scanning_mode="active" requests device names via scan response
+    scanner = BleakScanner(
+        detection_callback=on_advertisement,
+        scanning_mode="active",
+    )
     consecutive_empty = 0
 
     while True:
