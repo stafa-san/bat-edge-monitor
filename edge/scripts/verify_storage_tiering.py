@@ -20,14 +20,18 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
-# Make `storage` (batdetect-service) importable.
+# Make `storage` (batdetect-service) and `disk_watchdog` (sync-service) importable.
 STORAGE_SRC = REPO_ROOT / "edge" / "batdetect-service" / "src"
-if not (STORAGE_SRC / "storage.py").exists():
-    print(f"FAIL: cannot find storage.py at {STORAGE_SRC}", file=sys.stderr)
-    sys.exit(1)
+WATCHDOG_SRC = REPO_ROOT / "edge" / "sync-service" / "src"
+for required in [STORAGE_SRC / "storage.py", WATCHDOG_SRC / "disk_watchdog.py"]:
+    if not required.exists():
+        print(f"FAIL: cannot find {required}", file=sys.stderr)
+        sys.exit(1)
 sys.path.insert(0, str(STORAGE_SRC))
+sys.path.insert(0, str(WATCHDOG_SRC))
 
 import storage  # noqa: E402
+import disk_watchdog  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
@@ -39,9 +43,15 @@ def pred(cls, conf):
 
 
 def make_wav(path: Path, size_bytes: int = 1024) -> Path:
-    """Create a fake WAV file of approximate size; content doesn't matter."""
+    """Create a fake WAV file of the requested size; content doesn't matter.
+
+    Uses ``truncate`` to produce a sparse file so tests requesting multi-GB
+    "files" don't actually consume the host's disk. ``os.path.getsize``
+    still reports the logical size, which is all the watchdog reads.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"RIFF" + b"\x00" * (size_bytes - 4))
+    with open(path, "wb") as f:
+        f.truncate(size_bytes)
     return path
 
 
@@ -271,6 +281,278 @@ def test_archive_unknown_tier_raises():
 
 
 # -----------------------------------------------------------------------------
+# Disk watchdog — pure _select_files_to_delete
+# -----------------------------------------------------------------------------
+
+def _cand(row_id, size_bytes, stage="tier2_active"):
+    return {
+        "id": row_id,
+        "audio_path": f"/bat_audio/fake/{row_id}.wav",
+        "size_bytes": size_bytes,
+        "stage": stage,
+    }
+
+
+def test_select_files_empty():
+    assert disk_watchdog._select_files_to_delete([], 100) == []
+
+
+def test_select_files_shortest_prefix():
+    cands = [_cand(1, 50), _cand(2, 50), _cand(3, 50)]
+    picked = disk_watchdog._select_files_to_delete(cands, 80)
+    # 50 + 50 = 100 >= 80; should include 2 candidates.
+    assert [c["id"] for c in picked] == [1, 2]
+
+
+def test_select_files_exact_match_stops_immediately():
+    cands = [_cand(1, 100), _cand(2, 100)]
+    picked = disk_watchdog._select_files_to_delete(cands, 100)
+    assert [c["id"] for c in picked] == [1]
+
+
+def test_select_files_insufficient_returns_all():
+    cands = [_cand(1, 50), _cand(2, 50)]
+    picked = disk_watchdog._select_files_to_delete(cands, 9999)
+    assert [c["id"] for c in picked] == [1, 2]
+
+
+# -----------------------------------------------------------------------------
+# Disk watchdog — get_audio_disk_stats
+# -----------------------------------------------------------------------------
+
+def test_get_audio_disk_stats_returns_fields_for_real_dir():
+    with tempfile.TemporaryDirectory() as tmp:
+        stats = disk_watchdog.get_audio_disk_stats(tmp)
+    assert "audioDiskTotalGb" in stats and stats["audioDiskTotalGb"] is not None
+    assert "audioDiskUsedGb" in stats
+    assert "audioDiskFreeGb" in stats
+    assert stats["audioDiskWarningGb"] == disk_watchdog.DISK_WARNING_GB
+    assert stats["audioDiskHardCapGb"] == disk_watchdog.DISK_HARD_CAP_GB
+    assert isinstance(stats["audioHaltActive"], bool)
+
+
+def test_get_audio_disk_stats_missing_dir():
+    stats = disk_watchdog.get_audio_disk_stats("/this/does/not/exist/ever")
+    assert stats["audioDiskTotalGb"] is None
+
+
+# -----------------------------------------------------------------------------
+# Disk watchdog — enforce_disk_quota with mocked DB + disk usage
+# -----------------------------------------------------------------------------
+
+class _FakeUsage:
+    def __init__(self, used_gb, total_gb=229):
+        self.used = int(used_gb * (1024 ** 3))
+        self.total = int(total_gb * (1024 ** 3))
+        self.free = self.total - self.used
+
+
+class _RecordingFakeConn:
+    """Minimal conn stand-in that records every SQL execute + returns curated rows."""
+
+    def __init__(self):
+        self.executed = []
+        self.stage_rows = {s: [] for s in disk_watchdog.STAGES}
+        self.unsynced_tier1_count = 0
+
+    def set_stage_rows(self, stage, rows):
+        self.stage_rows[stage] = rows
+
+    def cursor(self):
+        return _RecordingFakeCursor(self)
+
+    def commit(self):
+        pass
+
+
+class _RecordingFakeCursor:
+    def __init__(self, conn):
+        self.conn = conn
+        self._rows = []
+
+    def execute(self, sql, params=None):
+        self.conn.executed.append((sql, params))
+        # Dispatch SELECT queries to the stage rows map.
+        for stage, stage_sql in disk_watchdog._STAGE_SQL.items():
+            if sql.strip() == stage_sql.strip():
+                self._rows = self.conn.stage_rows[stage]
+                return
+        if "COUNT(*)" in sql and "synced_remote_at IS NULL" in sql:
+            self._rows = [(self.conn.unsynced_tier1_count,)]
+            return
+        # UPDATEs / INSERTs — nothing to fetch.
+        self._rows = []
+
+    def fetchall(self):
+        return list(self._rows)
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+
+def _reset_halt_flag_to(tmp_path):
+    """Redirect the module-level HALT_FLAG at a temp location for the test."""
+    disk_watchdog.HALT_FLAG = Path(tmp_path) / "halt_recordings"
+
+
+def test_enforce_below_warning_does_nothing_and_clears_halt():
+    with tempfile.TemporaryDirectory() as tmp:
+        _reset_halt_flag_to(tmp)
+        disk_watchdog.HALT_FLAG.touch()  # pretend it was set earlier
+        conn = _RecordingFakeConn()
+        result = disk_watchdog.enforce_disk_quota(
+            conn, tmp, disk_usage_fn=lambda _: _FakeUsage(used_gb=100),
+        )
+        assert result["action"] == "none"
+        assert result["halt_recordings"] is False
+        assert not disk_watchdog.HALT_FLAG.exists()
+
+
+def test_enforce_above_warning_below_hardcap_does_not_delete():
+    with tempfile.TemporaryDirectory() as tmp:
+        _reset_halt_flag_to(tmp)
+        conn = _RecordingFakeConn()
+        conn.set_stage_rows("tier2_active", [(1, "/bat_audio/a.wav")])
+        result = disk_watchdog.enforce_disk_quota(
+            conn, tmp, disk_usage_fn=lambda _: _FakeUsage(used_gb=175),
+        )
+        assert result["action"] == "warning"
+        assert result["files_deleted"] == 0
+
+
+def test_enforce_over_hardcap_deletes_in_tier_order():
+    """First-priority stage drains fully before later stages are touched."""
+    with tempfile.TemporaryDirectory() as tmp:
+        _reset_halt_flag_to(tmp)
+        bat_audio = Path(tmp) / "bat_audio"
+
+        # Sparse files — size reported by os.path.getsize but no blocks allocated.
+        def make(path, size_gb):
+            return make_wav(bat_audio / path, size_bytes=int(size_gb * (1024 ** 3)))
+
+        # One tier-4-expired file of 6 GB; one tier-2-active of 6 GB.
+        t4_path = make("tier4_anomaly/old.wav", 6)
+        t2_path = make("tier2_30day/fresh.wav", 6)
+
+        conn = _RecordingFakeConn()
+        conn.set_stage_rows("tier4_expired", [(1, str(t4_path))])
+        conn.set_stage_rows("tier2_active", [(2, str(t2_path))])
+
+        # Sim: 185 GB used → over 180 hard cap; need to free 15 GB to land
+        # at 170 warning. Our two files = 12 GB total, still leaves 173 GB
+        # after delete → halt required.
+        call_count = {"n": 0}
+        def disk_usage_fn(_):
+            call_count["n"] += 1
+            # First read reports the over-cap state; second (re-check)
+            # reflects what remains after deletes.
+            if call_count["n"] == 1:
+                return _FakeUsage(used_gb=185)
+            freed_gb = sum(
+                c.get("size_bytes", 0) for c in []  # placeholder; updated below
+            )
+            # Use attribute on conn to track actual deletes.
+            return _FakeUsage(used_gb=185 - conn._deleted_gb)
+
+        conn._deleted_gb = 0
+        _orig_delete = disk_watchdog._delete_candidate
+        def tracking_delete(c, cand):
+            bytes_freed = _orig_delete(c, cand)
+            conn._deleted_gb += bytes_freed / (1024 ** 3)
+            return bytes_freed
+        disk_watchdog._delete_candidate = tracking_delete
+
+        try:
+            result = disk_watchdog.enforce_disk_quota(
+                conn, str(bat_audio), disk_usage_fn=disk_usage_fn,
+            )
+        finally:
+            disk_watchdog._delete_candidate = _orig_delete
+
+        assert result["files_deleted"] == 2
+        assert not t4_path.exists()
+        assert not t2_path.exists()
+        # tier-4-expired was stage 1, tier-2-active was stage 3 — both drained.
+        # With both freed, we still project 173 GB > 170, so halt should trigger.
+        assert result["action"] == "halted_recordings"
+        assert result["halt_recordings"] is True
+        assert disk_watchdog.HALT_FLAG.exists()
+
+
+def test_enforce_over_hardcap_success_clears_halt():
+    """Given enough to delete, we recover under warning and halt stays off."""
+    with tempfile.TemporaryDirectory() as tmp:
+        _reset_halt_flag_to(tmp)
+        disk_watchdog.HALT_FLAG.touch()  # stale from a previous incident
+        bat_audio = Path(tmp) / "bat_audio"
+
+        paths = []
+        for i in range(3):
+            p = make_wav(bat_audio / "tier2_30day" / f"f{i}.wav", size_bytes=6 * 1024 ** 3)
+            paths.append(p)
+
+        conn = _RecordingFakeConn()
+        conn.set_stage_rows("tier2_active", [(i + 1, str(p)) for i, p in enumerate(paths)])
+
+        conn._deleted_gb = 0
+        _orig = disk_watchdog._delete_candidate
+        def tracking_delete(c, cand):
+            b = _orig(c, cand)
+            conn._deleted_gb += b / (1024 ** 3)
+            return b
+        disk_watchdog._delete_candidate = tracking_delete
+
+        def disk_usage_fn(_):
+            return _FakeUsage(used_gb=185 - conn._deleted_gb)
+
+        try:
+            result = disk_watchdog.enforce_disk_quota(
+                conn, str(bat_audio), disk_usage_fn=disk_usage_fn,
+            )
+        finally:
+            disk_watchdog._delete_candidate = _orig
+
+        # 3 × 6 GB = 18 GB freed → below 170 GB warning. No halt.
+        assert result["action"] == "deleted_files"
+        assert result["halt_recordings"] is False
+        assert not disk_watchdog.HALT_FLAG.exists()
+
+
+def test_enforce_halts_when_all_candidates_protected():
+    """No deletable rows at all — watchdog must halt, not silently pass."""
+    with tempfile.TemporaryDirectory() as tmp:
+        _reset_halt_flag_to(tmp)
+        conn = _RecordingFakeConn()
+        conn.unsynced_tier1_count = 42  # Pretend 42 tier-1 files are awaiting OneDrive.
+
+        result = disk_watchdog.enforce_disk_quota(
+            conn, tmp, disk_usage_fn=lambda _: _FakeUsage(used_gb=190),
+        )
+        assert result["action"] == "halted_recordings"
+        assert result["unsynced_files_blocking"] == 42
+        assert disk_watchdog.HALT_FLAG.exists()
+
+
+def test_stage_sql_excludes_unsynced_tier1():
+    """SQL text check: tier1_synced query requires synced_remote_at IS NOT NULL."""
+    sql = disk_watchdog._STAGE_SQL["tier1_synced"]
+    assert "storage_tier = 1" in sql
+    assert "synced_remote_at IS NOT NULL" in sql
+    assert "verified_class IS NULL" in sql
+
+
+def test_stage_sql_excludes_verified():
+    for stage_name, sql in disk_watchdog._STAGE_SQL.items():
+        assert "verified_class IS NULL" in sql, f"{stage_name} missing verified protection"
+
+
+# -----------------------------------------------------------------------------
 # Runner
 # -----------------------------------------------------------------------------
 
@@ -310,6 +592,23 @@ TESTS = [
     test_archive_tier_3_writes_nothing,
     test_archive_tier_4_is_flat,
     test_archive_unknown_tier_raises,
+    # disk watchdog — pure
+    test_select_files_empty,
+    test_select_files_shortest_prefix,
+    test_select_files_exact_match_stops_immediately,
+    test_select_files_insufficient_returns_all,
+    # disk watchdog — stats
+    test_get_audio_disk_stats_returns_fields_for_real_dir,
+    test_get_audio_disk_stats_missing_dir,
+    # disk watchdog — enforce
+    test_enforce_below_warning_does_nothing_and_clears_halt,
+    test_enforce_above_warning_below_hardcap_does_not_delete,
+    test_enforce_over_hardcap_deletes_in_tier_order,
+    test_enforce_over_hardcap_success_clears_halt,
+    test_enforce_halts_when_all_candidates_protected,
+    # disk watchdog — SQL protection assertions
+    test_stage_sql_excludes_unsynced_tier1,
+    test_stage_sql_excludes_verified,
 ]
 
 

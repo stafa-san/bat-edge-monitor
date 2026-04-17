@@ -63,6 +63,10 @@ services:
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_STORAGE_BUCKET=bat-edge-monitor.firebasestorage.app
       - UPLOAD_BAT_AUDIO=false
+      - BAT_AUDIO_DIR=/bat_audio
+      - DISK_WARNING_GB=${DISK_WARNING_GB:-170}
+      - DISK_HARD_CAP_GB=${DISK_HARD_CAP_GB:-180}
+      - DISK_TARGET_FREE_GB=${DISK_TARGET_FREE_GB:-50}
     volumes:
       - ./sync-service/serviceAccountKey.json:/app/serviceAccountKey.json:ro
       - /proc/uptime:/host/uptime:ro
@@ -70,6 +74,7 @@ services:
       - /proc/loadavg:/host/loadavg:ro
       - /sys/class/thermal/thermal_zone0/temp:/host/cpu_temp:ro
       - bat_audio:/bat_audio
+      - control_flags:/control
     depends_on:
       db:
         condition: service_healthy

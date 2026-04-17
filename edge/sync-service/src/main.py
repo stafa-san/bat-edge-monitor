@@ -6,6 +6,7 @@ import firebase_admin
 import psycopg2
 from firebase_admin import credentials, firestore
 
+from src.disk_watchdog import enforce_disk_quota, get_audio_disk_stats
 from src.health import collect_all_metrics
 
 
@@ -391,6 +392,7 @@ def sync_device_status(conn, db):
 
         # ── Build the payload once and reuse it ──
         sample_rate = int(os.getenv("SAMPLE_RATE", "250000"))
+        bat_audio_dir = os.getenv("BAT_AUDIO_DIR", "/bat_audio")
         payload = {
             "uptimeSeconds": metrics["uptime_seconds"],
             "cpuTemp": metrics["cpu_temp"],
@@ -411,6 +413,7 @@ def sync_device_status(conn, db):
             "unsyncedCount": metrics["unsynced_count"],
             "sampleRateHz": sample_rate,
             "recordedAt": firestore.SERVER_TIMESTAMP,
+            **get_audio_disk_stats(bat_audio_dir),
         }
 
         # ── Detect offline gap ──
@@ -590,6 +593,19 @@ def main():
             env_count = sync_environmental_readings(conn, db)
             audio_count = upload_bat_audio(conn, db)
             sync_device_status(conn, db)
+
+            # Reclaim disk if the bat_audio store crossed the hard cap, or
+            # flip/release the halt flag based on current usage.
+            bat_audio_dir = os.getenv("BAT_AUDIO_DIR", "/bat_audio")
+            watchdog = enforce_disk_quota(conn, bat_audio_dir)
+            if watchdog["action"] != "none":
+                print(
+                    f"[SYNC] Watchdog: {watchdog['action']} "
+                    f"used={watchdog.get('used_gb')} GB "
+                    f"deleted={watchdog.get('files_deleted', 0)} "
+                    f"freed={watchdog.get('gb_freed', 0)} GB "
+                    f"halt={watchdog.get('halt_recordings', False)}"
+                )
 
             now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
             print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, {env_count} env, health ok ({now_str})")
