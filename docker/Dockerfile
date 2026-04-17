@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 
 # Python deps
 RUN pip install --no-cache-dir \
-    batdetect2 \
+    batdetect2==1.3.1 \
     numpy \
     scikit-learn \
     tqdm

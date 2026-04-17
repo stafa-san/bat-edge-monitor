@@ -7,7 +7,7 @@ soundfile
 torch==2.4.0
 torchaudio
 transformers
-batdetect2
+batdetect2==1.3.1
 scikit-maad
 pandas
 psycopg2-binary

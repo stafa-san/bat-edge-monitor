@@ -13,6 +13,7 @@ COPY edge/batdetect-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY edge/batdetect-service/src/ ./src/
+COPY edge/scripts/ ./edge/scripts/
 COPY docker/models/groups_model.pt /app/models/groups_model.pt
 
 CMD ["python", "-m", "src.main"]
