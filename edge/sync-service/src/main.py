@@ -256,6 +256,39 @@ def run_migrations(conn):
                 END IF;
             END $$;
         """)
+        # Groups-classifier head + flywheel columns on bat_detections.
+        # Additive only — legacy rows keep NULL and the existing `species`
+        # column stays the source of truth until the dashboard cuts over.
+        cur.execute("""
+            ALTER TABLE bat_detections
+                ADD COLUMN IF NOT EXISTS predicted_class       VARCHAR(32),
+                ADD COLUMN IF NOT EXISTS prediction_confidence REAL,
+                ADD COLUMN IF NOT EXISTS model_version         VARCHAR(64),
+                ADD COLUMN IF NOT EXISTS reviewed_by           VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS reviewed_at           TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS verified_class        VARCHAR(32),
+                ADD COLUMN IF NOT EXISTS reviewer_notes        TEXT,
+                ADD COLUMN IF NOT EXISTS temperature_c         REAL,
+                ADD COLUMN IF NOT EXISTS temperature_timestamp TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS alignment_error_ms    REAL,
+                ADD COLUMN IF NOT EXISTS storage_tier          SMALLINT,
+                ADD COLUMN IF NOT EXISTS expires_at            TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS remote_audio_path     VARCHAR(512),
+                ADD COLUMN IF NOT EXISTS synced_remote_at      TIMESTAMP
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bat_predicted_class
+            ON bat_detections(predicted_class)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bat_storage_tier
+            ON bat_detections(storage_tier)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bat_unverified
+            ON bat_detections(verified_class)
+            WHERE verified_class IS NULL
+        """)
         # Environmental readings table (HOBO MX2201 BLE sensor)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS environmental_readings (
