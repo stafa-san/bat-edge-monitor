@@ -17,7 +17,7 @@ CREATE INDEX idx_class_device ON classifications(device);
 CREATE INDEX idx_class_label ON classifications(label);
 CREATE INDEX idx_class_synced ON classifications(synced);
 
--- Bat echolocation detections (BatDetect2 model)
+-- Bat echolocation detections (BatDetect2 raw + groups classifier head)
 CREATE TABLE IF NOT EXISTS bat_detections (
     id SERIAL PRIMARY KEY,
     species VARCHAR(255) NOT NULL,
@@ -32,7 +32,32 @@ CREATE TABLE IF NOT EXISTS bat_detections (
     sync_id UUID NOT NULL,
     detection_time TIMESTAMP NOT NULL,
     synced BOOLEAN DEFAULT FALSE,
-    source VARCHAR(20) DEFAULT 'live'
+    source VARCHAR(20) DEFAULT 'live',
+
+    -- Groups classifier head (EPFU_LANO, LABO, LACI, MYSP, PESU)
+    predicted_class VARCHAR(32),
+    prediction_confidence REAL,
+    model_version VARCHAR(64),
+
+    -- Human review (flywheel curation)
+    reviewed_by VARCHAR(100),
+    reviewed_at TIMESTAMP,
+    verified_class VARCHAR(32),
+    reviewer_notes TEXT,
+
+    -- Cross-modal environmental context (thesis data-integrity metric)
+    temperature_c REAL,
+    temperature_timestamp TIMESTAMP,
+    alignment_error_ms REAL,
+
+    -- Storage tiering (1=permanent, 2=30d, 3=metadata-only, 4=anomaly 7d)
+    storage_tier SMALLINT,
+    expires_at TIMESTAMP,
+
+    -- OneDrive archival (Tier 1). Local `audio_path` is the on-Pi copy
+    -- and is cleared once `remote_audio_path` is confirmed uploaded.
+    remote_audio_path VARCHAR(512),
+    synced_remote_at TIMESTAMP
 );
 
 CREATE INDEX idx_bat_detection_time ON bat_detections(detection_time);
@@ -40,6 +65,9 @@ CREATE INDEX idx_bat_source ON bat_detections(source);
 CREATE INDEX idx_bat_device ON bat_detections(device);
 CREATE INDEX idx_bat_species ON bat_detections(species);
 CREATE INDEX idx_bat_synced ON bat_detections(synced);
+CREATE INDEX idx_bat_predicted_class ON bat_detections(predicted_class);
+CREATE INDEX idx_bat_storage_tier ON bat_detections(storage_tier);
+CREATE INDEX idx_bat_unverified ON bat_detections(verified_class) WHERE verified_class IS NULL;
 
 -- Device health status (collected by sync-service each cycle)
 CREATE TABLE IF NOT EXISTS device_status (

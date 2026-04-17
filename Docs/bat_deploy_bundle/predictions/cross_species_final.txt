@@ -1,0 +1,90 @@
+=== Epfu ===
+
+=== AGGREGATE ACROSS 1621 FILES ===
+Total detections: 125960
+  EPFU_LANO: 94919 (75.4%)
+  LACI: 19285 (15.3%)
+  LABO: 6837 (5.4%)
+  MYSP: 3993 (3.2%)
+  PESU: 926 (0.7%)
+
+=== Labo ===
+
+=== AGGREGATE ACROSS 736 FILES ===
+Total detections: 50235
+  LABO: 38921 (77.5%)
+  EPFU_LANO: 4699 (9.4%)
+  LACI: 2629 (5.2%)
+  MYSP: 2331 (4.6%)
+  PESU: 1655 (3.3%)
+
+=== Laci ===
+
+=== AGGREGATE ACROSS 375 FILES ===
+Total detections: 17744
+  LACI: 12417 (70.0%)
+  EPFU_LANO: 3307 (18.6%)
+  LABO: 1319 (7.4%)
+  MYSP: 600 (3.4%)
+  PESU: 101 (0.6%)
+
+=== Lano ===
+
+=== AGGREGATE ACROSS 189 FILES ===
+Total detections: 8229
+  EPFU_LANO: 5168 (62.8%)
+  LACI: 1787 (21.7%)
+  LABO: 851 (10.3%)
+  MYSP: 344 (4.2%)
+  PESU: 79 (1.0%)
+
+=== Myle ===
+2MU01134_20240611_032926.wav: 8 dets, mean_conf=0.669
+  MYSP: 8 (100.0%)
+
+=== AGGREGATE ACROSS 6 FILES ===
+Total detections: 374
+  MYSP: 368 (98.4%)
+  LABO: 5 (1.3%)
+  PESU: 1 (0.3%)
+
+=== Mylu ===
+
+=== AGGREGATE ACROSS 168 FILES ===
+Total detections: 12300
+  MYSP: 9712 (79.0%)
+  LABO: 1176 (9.6%)
+  EPFU_LANO: 904 (7.3%)
+  PESU: 271 (2.2%)
+  LACI: 237 (1.9%)
+
+=== Myse ===
+Processing 1 files from /workspace/bat_data/Myse/
+
+2MU01134_20240610_230357.wav: 120 dets, mean_conf=0.906
+  MYSP: 120 (100.0%)
+
+=== AGGREGATE ACROSS 1 FILES ===
+Total detections: 120
+  MYSP: 120 (100.0%)
+
+=== Myso ===
+
+=== AGGREGATE ACROSS 657 FILES ===
+Total detections: 63381
+  MYSP: 59333 (93.6%)
+  LABO: 1630 (2.6%)
+  EPFU_LANO: 1385 (2.2%)
+  PESU: 608 (1.0%)
+  LACI: 425 (0.7%)
+
+=== Pesu ===
+
+=== AGGREGATE ACROSS 16 FILES ===
+Total detections: 676
+  PESU: 564 (83.4%)
+  LABO: 58 (8.6%)
+  LACI: 32 (4.7%)
+  EPFU_LANO: 19 (2.8%)
+  MYSP: 3 (0.4%)
+
