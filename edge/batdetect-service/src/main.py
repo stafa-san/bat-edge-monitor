@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import uuid
 from datetime import datetime
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
@@ -13,6 +14,7 @@ import psycopg2
 from psycopg2.extras import execute_values
 from batdetect2 import api as bat_api
 
+from src import storage
 from src.classifier import classify, load_groups_classifier
 
 
@@ -43,6 +45,10 @@ LOCK_PATH = "/locks/audio_device.lock"
 UPLOAD_BAT_AUDIO = os.getenv("UPLOAD_BAT_AUDIO", "false").lower() == "true"
 BAT_AUDIO_DIR = "/bat_audio"
 CLASSIFIER_DET_THRESHOLD = 0.5  # Matches training filter; see BATDETECT2_TRAINING.md
+
+# Shared control volume with sync-service. Disk watchdog touches this file
+# when it wants us to stop capturing until pressure is relieved.
+HALT_FLAG = Path("/control/halt_recordings")
 
 
 class BatAudioCapture:
@@ -119,8 +125,16 @@ async def main():
     threshold = float(os.getenv("DETECTION_THRESHOLD", "0.3"))
     segment_duration = int(os.getenv("SEGMENT_DURATION", "5"))
     enable_classifier = os.getenv("ENABLE_GROUPS_CLASSIFIER", "false").lower() == "true"
+    enable_storage_tiering = os.getenv("ENABLE_STORAGE_TIERING", "false").lower() == "true"
+    site_id = os.getenv("PI_SITE", "pi01")
     model_path = os.getenv("MODEL_PATH", "/app/models/groups_model.pt")
     model_version = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-17")
+
+    if enable_storage_tiering and not enable_classifier:
+        raise RuntimeError(
+            "ENABLE_STORAGE_TIERING requires ENABLE_GROUPS_CLASSIFIER=true — "
+            "tier assignment reads the classifier's confidence per detection."
+        )
 
     print(f"[BAT] Initializing audio capture: {device_name} @ {sample_rate} Hz")
     capture = BatAudioCapture(device_name=device_name, sampling_rate=sample_rate)
@@ -140,6 +154,11 @@ async def main():
     else:
         print("[BAT] Groups classifier disabled (ENABLE_GROUPS_CLASSIFIER=false)")
 
+    if enable_storage_tiering:
+        print(f"[BAT] Storage tiering enabled — site_id={site_id}, bat_audio_dir={BAT_AUDIO_DIR}")
+    else:
+        print("[BAT] Storage tiering disabled (ENABLE_STORAGE_TIERING=false)")
+
     conn = get_db_connection()
 
     print(f"[BAT] Monitoring started — batdetect_threshold={threshold}, segment={segment_duration}s")
@@ -148,6 +167,14 @@ async def main():
 
     while True:
         try:
+            # Disk-watchdog kill switch. Wait (don't capture) until sync-service
+            # removes the flag.
+            if HALT_FLAG.exists():
+                if segment_count % 10 == 0:
+                    print("[BAT] Recordings halted by disk watchdog; waiting...")
+                await asyncio.sleep(60)
+                continue
+
             segment_count += 1
 
             # Capture audio segment
@@ -167,9 +194,30 @@ async def main():
             if rows_data:
                 print(f"[BAT] #{segment_count} | {len(rows_data)} bat call(s) detected!")
 
-                # Optionally save audio for dashboard playback / future retraining
+                # Decide where the WAV goes. Tiering supersedes UPLOAD_BAT_AUDIO
+                # when enabled; otherwise fall back to the legacy "copy if
+                # UPLOAD_BAT_AUDIO" behavior.
                 audio_saved_path = None
-                if UPLOAD_BAT_AUDIO:
+                file_storage_tier = None
+                file_expires_at = None
+
+                if enable_storage_tiering:
+                    predictions = [pred for _, pred in rows_data if pred is not None]
+                    tier = storage.determine_tier(predictions)
+                    class_folder = storage.pick_class_folder(tier, predictions)
+                    if tier == 3:
+                        archived_path = None
+                        file_expires_at = None
+                    else:
+                        archived_path, file_expires_at = storage.archive_wav(
+                            audio_path, tier, class_folder,
+                            site_id, detection_time, BAT_AUDIO_DIR,
+                        )
+                    audio_saved_path = str(archived_path) if archived_path else None
+                    file_storage_tier = tier
+                    folder_str = f"/{class_folder}" if class_folder else ""
+                    print(f"  -> tier {tier}{folder_str} -> {audio_saved_path or '(no audio written)'}")
+                elif UPLOAD_BAT_AUDIO:
                     os.makedirs(BAT_AUDIO_DIR, exist_ok=True)
                     audio_saved_path = f"{BAT_AUDIO_DIR}/{sync_id}.wav"
                     shutil.copy2(audio_path, audio_saved_path)
@@ -203,6 +251,7 @@ async def main():
                         start, end, low_freq, high_freq, duration_ms,
                         device_name, sync_id, detection_time, audio_saved_path,
                         predicted_class, prediction_confidence, row_model_version,
+                        file_storage_tier, file_expires_at,
                     ))
 
                 conn = ensure_connection(conn)
@@ -212,7 +261,8 @@ async def main():
                         (species, common_name, detection_prob, start_time, end_time,
                          low_freq, high_freq, duration_ms, device, sync_id,
                          detection_time, audio_path,
-                         predicted_class, prediction_confidence, model_version)
+                         predicted_class, prediction_confidence, model_version,
+                         storage_tier, expires_at)
                         VALUES %s
                     """, rows)
                 conn.commit()

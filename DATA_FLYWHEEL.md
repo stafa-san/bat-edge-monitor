@@ -22,25 +22,31 @@ Goal: Every bat detection the Pi makes in production becomes potential future tr
 
 You CAN'T save everything — an AudioMoth recording at 192 kHz generates ~1.4 GB per hour. A full deployment season = terabytes. So you triage.
 
+The thresholds below are the **defaults shipped in `edge/batdetect-service/src/storage.py`** (last tuned 2026-04-17). See the [Tuning](#tuning-the-thresholds) section at the bottom for how to change them.
+
 ### Tier 1: Save forever (high-confidence + rare species)
-- Any detection with `confidence > 0.9` for a rare class (PESU, LACI, LABO)
-- Any file where MYSP recall is needed for endangered-species work
-- Full 192kHz 16-bit WAV, no compression
+- Any detection with predicted class in `{PESU, LACI, LABO}` AND `prediction_confidence >= 0.9`
+- On-Pi path: `/bat_audio/tier1_permanent/<predicted_class>/<site>_<timestamp>.wav`
+- Multi-class files go to the rarest class present (priority: PESU > LACI > LABO > MYSP > EPFU_LANO)
+- Full 192 kHz 16-bit WAV, no compression
+- Uploaded to UC OneDrive; local copy deleted after upload confirms
 
 ### Tier 2: Save for 30 days (medium confidence — might be useful)
-- Detections with `confidence 0.5-0.9`
-- The full WAV file snippet ±5 seconds around the detection
-- After 30 days, delete if not flagged for review
+- Any detection with `prediction_confidence >= 0.5` that didn't qualify for tier 1
+- On-Pi path: `/bat_audio/tier2_30day/<site>_<timestamp>.wav` (flat, no species subfolder)
+- Local only; no OneDrive upload; `expires_at = detection_time + 30d`
+- Disk watchdog deletes expired files; may pre-emptively delete under disk pressure
 
 ### Tier 3: Save metadata only (low confidence — probably noise)
-- Detections with `confidence < 0.5`
-- Save just: timestamp, predicted class, confidence, file path (if file retained)
-- Audio discarded after 24 hours
+- Detections exist but every one falls below 0.5 confidence (and above 0.3)
+- Store the detection row in Postgres with `audio_path = NULL, storage_tier = 3`
+- Audio file is **never written to disk** — decision is made before the WAV is archived
 
 ### Tier 4: Anomaly recordings (unknown audio worth investigating)
-- Files where ALL detections are < 0.3 confidence (could be new species or corrupted recording)
-- Files with unusual acoustic features (very loud, very quiet, unusual spectrum)
-- Keep 7 days for manual review
+- Every detection below `TIER4_CONFIDENCE_MAX` (0.3) — could be new species or corrupted recording
+- On-Pi path: `/bat_audio/tier4_anomaly/<site>_<timestamp>.wav` (flat)
+- Kept 7 days for manual review, then reclaimed by the disk watchdog
+- NOTE: the "no detections at all" case from earlier drafts of this doc is **not** archived today — the Pi service only runs tiering when BatDetect2 returns detections. Adding an "entirely silent segment" capture would require a schema change to allow detection-less rows. Out of scope for Stage D1.
 
 ## Storage options
 
@@ -231,6 +237,34 @@ Assuming 10 bat calls/hour average, 8 hours/night, 6 months/year = 14,400 calls/
 - Tier 4 (~1% anomalies): ~150 × 1MB × 7 days = negligible
 
 **Total cloud cost: <$1/month.** Plus a $100 external drive once.
+
+## Tuning the thresholds
+
+All tunable knobs live at the top of [`edge/batdetect-service/src/storage.py`](edge/batdetect-service/src/storage.py). No other file reads these values — edit, rebuild the `batdetect-service` image, restart.
+
+```python
+THRESHOLDS_LAST_TUNED = "2026-04-17"
+
+TIER1_CONFIDENCE_MIN = 0.9     # rare-species -> permanent
+TIER2_CONFIDENCE_MIN = 0.5     # any class -> 30-day retention
+TIER4_CONFIDENCE_MAX = 0.3     # all detections below this -> anomaly
+
+CLASS_PRIORITY_ORDER = ("PESU", "LACI", "LABO", "MYSP", "EPFU_LANO")
+RARE_CLASSES   = {"PESU", "LACI", "LABO"}
+COMMON_CLASSES = {"EPFU_LANO", "MYSP"}
+
+TIER2_RETENTION = timedelta(days=30)
+TIER4_RETENTION = timedelta(days=7)
+```
+
+**Workflow for Dr. Johnson:**
+
+1. Edit the constants in `storage.py`.
+2. Bump `THRESHOLDS_LAST_TUNED` so downstream reports can correlate data with the rules that produced it.
+3. Run the test suite: `python edge/scripts/verify_storage_tiering.py` — catches obvious bugs in the logic.
+4. Rebuild the container on the Pi: `docker compose build batdetect-service && docker compose up -d batdetect-service`.
+
+Thresholds only affect *new* captures. Existing files on disk keep whatever tier they were assigned at capture time.
 
 ## Why this matters for your thesis
 
