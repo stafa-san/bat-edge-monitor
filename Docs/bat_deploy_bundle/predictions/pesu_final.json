@@ -1,0 +1,4090 @@
+{
+  "2MU01134_20240522_224019.wav": [
+    {
+      "start_time": 0.0995,
+      "end_time": 0.1084,
+      "predicted_class": "PESU",
+      "confidence": 0.9842597842216492
+    },
+    {
+      "start_time": 0.1855,
+      "end_time": 0.1937,
+      "predicted_class": "PESU",
+      "confidence": 0.9873730540275574
+    },
+    {
+      "start_time": 0.2695,
+      "end_time": 0.2786,
+      "predicted_class": "PESU",
+      "confidence": 0.9972373247146606
+    },
+    {
+      "start_time": 0.4625,
+      "end_time": 0.4689,
+      "predicted_class": "PESU",
+      "confidence": 0.5414817333221436
+    },
+    {
+      "start_time": 0.5705,
+      "end_time": 0.581,
+      "predicted_class": "PESU",
+      "confidence": 0.9978487491607666
+    },
+    {
+      "start_time": 0.6605,
+      "end_time": 0.6662,
+      "predicted_class": "PESU",
+      "confidence": 0.48804771900177
+    },
+    {
+      "start_time": 0.7335,
+      "end_time": 0.7397,
+      "predicted_class": "PESU",
+      "confidence": 0.5610080361366272
+    },
+    {
+      "start_time": 0.8705,
+      "end_time": 0.8772,
+      "predicted_class": "PESU",
+      "confidence": 0.53211510181427
+    },
+    {
+      "start_time": 0.9815,
+      "end_time": 0.9903,
+      "predicted_class": "PESU",
+      "confidence": 0.997473418712616
+    },
+    {
+      "start_time": 1.0925,
+      "end_time": 1.1028,
+      "predicted_class": "PESU",
+      "confidence": 0.9916872382164001
+    },
+    {
+      "start_time": 1.2935,
+      "end_time": 1.3033,
+      "predicted_class": "PESU",
+      "confidence": 0.9985377788543701
+    },
+    {
+      "start_time": 1.4175,
+      "end_time": 1.4289,
+      "predicted_class": "PESU",
+      "confidence": 0.7974925637245178
+    },
+    {
+      "start_time": 1.7615,
+      "end_time": 1.773,
+      "predicted_class": "PESU",
+      "confidence": 0.7118775248527527
+    },
+    {
+      "start_time": 1.9665,
+      "end_time": 1.9807,
+      "predicted_class": "PESU",
+      "confidence": 0.9867292642593384
+    },
+    {
+      "start_time": 2.1895,
+      "end_time": 2.2008,
+      "predicted_class": "PESU",
+      "confidence": 0.9987319111824036
+    },
+    {
+      "start_time": 2.3905,
+      "end_time": 2.4031,
+      "predicted_class": "PESU",
+      "confidence": 0.9992813467979431
+    },
+    {
+      "start_time": 2.5165,
+      "end_time": 2.5279,
+      "predicted_class": "PESU",
+      "confidence": 0.9755969643592834
+    },
+    {
+      "start_time": 2.7185,
+      "end_time": 2.7289,
+      "predicted_class": "PESU",
+      "confidence": 0.9630257487297058
+    },
+    {
+      "start_time": 2.8435,
+      "end_time": 2.8539,
+      "predicted_class": "PESU",
+      "confidence": 0.9950032830238342
+    },
+    {
+      "start_time": 2.9755,
+      "end_time": 2.9867,
+      "predicted_class": "PESU",
+      "confidence": 0.7952352166175842
+    },
+    {
+      "start_time": 3.1165,
+      "end_time": 3.1276,
+      "predicted_class": "PESU",
+      "confidence": 0.9690283536911011
+    },
+    {
+      "start_time": 3.2335,
+      "end_time": 3.2438,
+      "predicted_class": "PESU",
+      "confidence": 0.9962335228919983
+    },
+    {
+      "start_time": 3.3655,
+      "end_time": 3.3768,
+      "predicted_class": "PESU",
+      "confidence": 0.9898724555969238
+    },
+    {
+      "start_time": 3.5745,
+      "end_time": 3.5844,
+      "predicted_class": "PESU",
+      "confidence": 0.994958221912384
+    },
+    {
+      "start_time": 3.7935,
+      "end_time": 3.8056,
+      "predicted_class": "PESU",
+      "confidence": 0.9522980451583862
+    },
+    {
+      "start_time": 4.0095,
+      "end_time": 4.0237,
+      "predicted_class": "PESU",
+      "confidence": 0.9701994061470032
+    },
+    {
+      "start_time": 4.5505,
+      "end_time": 4.5585,
+      "predicted_class": "LACI",
+      "confidence": 0.7474169731140137
+    },
+    {
+      "start_time": 4.7885,
+      "end_time": 4.7955,
+      "predicted_class": "LACI",
+      "confidence": 0.6614267826080322
+    },
+    {
+      "start_time": 4.8145,
+      "end_time": 4.8255,
+      "predicted_class": "PESU",
+      "confidence": 0.824775218963623
+    },
+    {
+      "start_time": 4.8885,
+      "end_time": 4.8969,
+      "predicted_class": "LACI",
+      "confidence": 0.9554990530014038
+    },
+    {
+      "start_time": 4.9745,
+      "end_time": 4.9821,
+      "predicted_class": "LACI",
+      "confidence": 0.8675389289855957
+    },
+    {
+      "start_time": 5.0435,
+      "end_time": 5.0502,
+      "predicted_class": "LACI",
+      "confidence": 0.7639970779418945
+    },
+    {
+      "start_time": 5.1155,
+      "end_time": 5.1229,
+      "predicted_class": "LACI",
+      "confidence": 0.49725934863090515
+    },
+    {
+      "start_time": 6.2765,
+      "end_time": 6.2915,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4097136855125427
+    },
+    {
+      "start_time": 8.0075,
+      "end_time": 8.0148,
+      "predicted_class": "LACI",
+      "confidence": 0.7990796566009521
+    }
+  ],
+  "2MU01134_20240523_005355.wav": [
+    {
+      "start_time": 0.1205,
+      "end_time": 0.1293,
+      "predicted_class": "LACI",
+      "confidence": 0.5009444952011108
+    },
+    {
+      "start_time": 0.2455,
+      "end_time": 0.2536,
+      "predicted_class": "LACI",
+      "confidence": 0.7434597015380859
+    },
+    {
+      "start_time": 0.6015,
+      "end_time": 0.6104,
+      "predicted_class": "LACI",
+      "confidence": 0.5620951652526855
+    },
+    {
+      "start_time": 0.9725,
+      "end_time": 0.9816,
+      "predicted_class": "LACI",
+      "confidence": 0.5474810600280762
+    },
+    {
+      "start_time": 1.3395,
+      "end_time": 1.3478,
+      "predicted_class": "LACI",
+      "confidence": 0.8354540467262268
+    },
+    {
+      "start_time": 1.6905,
+      "end_time": 1.6988,
+      "predicted_class": "LACI",
+      "confidence": 0.48212695121765137
+    },
+    {
+      "start_time": 3.1455,
+      "end_time": 3.154,
+      "predicted_class": "LABO",
+      "confidence": 0.6170427799224854
+    },
+    {
+      "start_time": 3.2705,
+      "end_time": 3.2775,
+      "predicted_class": "LABO",
+      "confidence": 0.5353625416755676
+    },
+    {
+      "start_time": 3.4015,
+      "end_time": 3.4081,
+      "predicted_class": "LABO",
+      "confidence": 0.5206792950630188
+    },
+    {
+      "start_time": 4.0145,
+      "end_time": 4.022,
+      "predicted_class": "PESU",
+      "confidence": 0.44435515999794006
+    },
+    {
+      "start_time": 4.0875,
+      "end_time": 4.0943,
+      "predicted_class": "MYSP",
+      "confidence": 0.410552442073822
+    },
+    {
+      "start_time": 4.3795,
+      "end_time": 4.3906,
+      "predicted_class": "PESU",
+      "confidence": 0.9783027768135071
+    },
+    {
+      "start_time": 4.5295,
+      "end_time": 4.537,
+      "predicted_class": "PESU",
+      "confidence": 0.5409079790115356
+    },
+    {
+      "start_time": 4.6985,
+      "end_time": 4.7052,
+      "predicted_class": "PESU",
+      "confidence": 0.5581766366958618
+    },
+    {
+      "start_time": 4.8185,
+      "end_time": 4.8245,
+      "predicted_class": "MYSP",
+      "confidence": 0.462600976228714
+    },
+    {
+      "start_time": 4.8725,
+      "end_time": 4.8787,
+      "predicted_class": "PESU",
+      "confidence": 0.4208837151527405
+    },
+    {
+      "start_time": 4.9535,
+      "end_time": 4.9598,
+      "predicted_class": "MYSP",
+      "confidence": 0.44057467579841614
+    },
+    {
+      "start_time": 5.0615,
+      "end_time": 5.0673,
+      "predicted_class": "PESU",
+      "confidence": 0.3987489640712738
+    },
+    {
+      "start_time": 5.2155,
+      "end_time": 5.2258,
+      "predicted_class": "PESU",
+      "confidence": 0.9766902327537537
+    },
+    {
+      "start_time": 5.3395,
+      "end_time": 5.3458,
+      "predicted_class": "PESU",
+      "confidence": 0.3503796458244324
+    },
+    {
+      "start_time": 5.3985,
+      "end_time": 5.4051,
+      "predicted_class": "PESU",
+      "confidence": 0.431611567735672
+    },
+    {
+      "start_time": 5.4405,
+      "end_time": 5.4506,
+      "predicted_class": "PESU",
+      "confidence": 0.978725016117096
+    },
+    {
+      "start_time": 5.5005,
+      "end_time": 5.5075,
+      "predicted_class": "PESU",
+      "confidence": 0.307515412569046
+    },
+    {
+      "start_time": 5.5735,
+      "end_time": 5.5823,
+      "predicted_class": "PESU",
+      "confidence": 0.9779727458953857
+    },
+    {
+      "start_time": 5.8625,
+      "end_time": 5.8687,
+      "predicted_class": "PESU",
+      "confidence": 0.4495190382003784
+    },
+    {
+      "start_time": 5.9305,
+      "end_time": 5.9376,
+      "predicted_class": "LABO",
+      "confidence": 0.7032398581504822
+    },
+    {
+      "start_time": 6.0205,
+      "end_time": 6.0279,
+      "predicted_class": "PESU",
+      "confidence": 0.43831002712249756
+    },
+    {
+      "start_time": 6.0615,
+      "end_time": 6.0699,
+      "predicted_class": "PESU",
+      "confidence": 0.9824967384338379
+    },
+    {
+      "start_time": 6.2945,
+      "end_time": 6.3018,
+      "predicted_class": "PESU",
+      "confidence": 0.9920395612716675
+    },
+    {
+      "start_time": 6.4125,
+      "end_time": 6.4204,
+      "predicted_class": "PESU",
+      "confidence": 0.988214373588562
+    },
+    {
+      "start_time": 6.4475,
+      "end_time": 6.4538,
+      "predicted_class": "LABO",
+      "confidence": 0.4802493751049042
+    },
+    {
+      "start_time": 6.7545,
+      "end_time": 6.7636,
+      "predicted_class": "PESU",
+      "confidence": 0.9996527433395386
+    },
+    {
+      "start_time": 6.9945,
+      "end_time": 7.0052,
+      "predicted_class": "PESU",
+      "confidence": 0.997210681438446
+    },
+    {
+      "start_time": 7.1145,
+      "end_time": 7.1232,
+      "predicted_class": "PESU",
+      "confidence": 0.9982224106788635
+    },
+    {
+      "start_time": 7.2395,
+      "end_time": 7.248,
+      "predicted_class": "PESU",
+      "confidence": 0.9791263341903687
+    },
+    {
+      "start_time": 7.3115,
+      "end_time": 7.319,
+      "predicted_class": "PESU",
+      "confidence": 0.3317207396030426
+    },
+    {
+      "start_time": 7.3595,
+      "end_time": 7.368,
+      "predicted_class": "PESU",
+      "confidence": 0.9984350800514221
+    },
+    {
+      "start_time": 7.4185,
+      "end_time": 7.4258,
+      "predicted_class": "LABO",
+      "confidence": 0.5598846077919006
+    },
+    {
+      "start_time": 7.5365,
+      "end_time": 7.5439,
+      "predicted_class": "LACI",
+      "confidence": 0.5811869502067566
+    },
+    {
+      "start_time": 7.5955,
+      "end_time": 7.604,
+      "predicted_class": "PESU",
+      "confidence": 0.7633082270622253
+    },
+    {
+      "start_time": 7.7155,
+      "end_time": 7.7229,
+      "predicted_class": "PESU",
+      "confidence": 0.9969099164009094
+    },
+    {
+      "start_time": 7.8355,
+      "end_time": 7.8459,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.5036778450012207
+    },
+    {
+      "start_time": 7.9555,
+      "end_time": 7.9624,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.7159886360168457
+    },
+    {
+      "start_time": 7.9615,
+      "end_time": 7.9722,
+      "predicted_class": "PESU",
+      "confidence": 0.8039290308952332
+    },
+    {
+      "start_time": 8.0855,
+      "end_time": 8.094,
+      "predicted_class": "LABO",
+      "confidence": 0.6349310874938965
+    },
+    {
+      "start_time": 8.1415,
+      "end_time": 8.1493,
+      "predicted_class": "LACI",
+      "confidence": 0.5342373847961426
+    },
+    {
+      "start_time": 8.3345,
+      "end_time": 8.3439,
+      "predicted_class": "PESU",
+      "confidence": 0.964687705039978
+    },
+    {
+      "start_time": 8.3395,
+      "end_time": 8.3485,
+      "predicted_class": "PESU",
+      "confidence": 0.3672228753566742
+    },
+    {
+      "start_time": 8.4555,
+      "end_time": 8.4666,
+      "predicted_class": "PESU",
+      "confidence": 0.9918094277381897
+    },
+    {
+      "start_time": 8.5235,
+      "end_time": 8.5318,
+      "predicted_class": "LACI",
+      "confidence": 0.47498759627342224
+    },
+    {
+      "start_time": 8.6975,
+      "end_time": 8.7101,
+      "predicted_class": "PESU",
+      "confidence": 0.9646969437599182
+    },
+    {
+      "start_time": 8.8055,
+      "end_time": 8.8129,
+      "predicted_class": "PESU",
+      "confidence": 0.9915480017662048
+    },
+    {
+      "start_time": 8.9305,
+      "end_time": 8.9402,
+      "predicted_class": "PESU",
+      "confidence": 0.994144856929779
+    },
+    {
+      "start_time": 9.1665,
+      "end_time": 9.1742,
+      "predicted_class": "PESU",
+      "confidence": 0.9918152689933777
+    },
+    {
+      "start_time": 9.3935,
+      "end_time": 9.4032,
+      "predicted_class": "PESU",
+      "confidence": 0.982699990272522
+    },
+    {
+      "start_time": 9.5195,
+      "end_time": 9.5286,
+      "predicted_class": "PESU",
+      "confidence": 0.9916634559631348
+    },
+    {
+      "start_time": 9.7515,
+      "end_time": 9.761,
+      "predicted_class": "PESU",
+      "confidence": 0.9897692203521729
+    },
+    {
+      "start_time": 9.8735,
+      "end_time": 9.8818,
+      "predicted_class": "PESU",
+      "confidence": 0.9921895265579224
+    },
+    {
+      "start_time": 10.1175,
+      "end_time": 10.126,
+      "predicted_class": "PESU",
+      "confidence": 0.9855254292488098
+    },
+    {
+      "start_time": 10.3535,
+      "end_time": 10.3623,
+      "predicted_class": "PESU",
+      "confidence": 0.9954002499580383
+    },
+    {
+      "start_time": 10.5715,
+      "end_time": 10.5794,
+      "predicted_class": "PESU",
+      "confidence": 0.9835898280143738
+    },
+    {
+      "start_time": 10.8075,
+      "end_time": 10.8167,
+      "predicted_class": "PESU",
+      "confidence": 0.9848012328147888
+    },
+    {
+      "start_time": 10.9345,
+      "end_time": 10.9427,
+      "predicted_class": "PESU",
+      "confidence": 0.9949336647987366
+    },
+    {
+      "start_time": 11.3015,
+      "end_time": 11.3104,
+      "predicted_class": "PESU",
+      "confidence": 0.9895792603492737
+    },
+    {
+      "start_time": 11.5325,
+      "end_time": 11.5421,
+      "predicted_class": "PESU",
+      "confidence": 0.8432517051696777
+    },
+    {
+      "start_time": 11.6625,
+      "end_time": 11.6702,
+      "predicted_class": "PESU",
+      "confidence": 0.8321917057037354
+    },
+    {
+      "start_time": 11.8775,
+      "end_time": 11.8867,
+      "predicted_class": "PESU",
+      "confidence": 0.9160837531089783
+    },
+    {
+      "start_time": 12.1115,
+      "end_time": 12.121,
+      "predicted_class": "PESU",
+      "confidence": 0.6547395586967468
+    },
+    {
+      "start_time": 12.2395,
+      "end_time": 12.2503,
+      "predicted_class": "PESU",
+      "confidence": 0.5322648286819458
+    },
+    {
+      "start_time": 12.3785,
+      "end_time": 12.388,
+      "predicted_class": "PESU",
+      "confidence": 0.990196168422699
+    },
+    {
+      "start_time": 12.6245,
+      "end_time": 12.633,
+      "predicted_class": "PESU",
+      "confidence": 0.9455163478851318
+    },
+    {
+      "start_time": 12.8785,
+      "end_time": 12.8874,
+      "predicted_class": "PESU",
+      "confidence": 0.9716219902038574
+    },
+    {
+      "start_time": 13.1255,
+      "end_time": 13.1343,
+      "predicted_class": "PESU",
+      "confidence": 0.8745872378349304
+    },
+    {
+      "start_time": 13.1555,
+      "end_time": 13.1637,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4653416574001312
+    },
+    {
+      "start_time": 13.2655,
+      "end_time": 13.2739,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.3454930782318115
+    },
+    {
+      "start_time": 13.3755,
+      "end_time": 13.3835,
+      "predicted_class": "LACI",
+      "confidence": 0.30914077162742615
+    },
+    {
+      "start_time": 13.4865,
+      "end_time": 13.4938,
+      "predicted_class": "LACI",
+      "confidence": 0.3833535313606262
+    },
+    {
+      "start_time": 13.6895,
+      "end_time": 13.698,
+      "predicted_class": "LACI",
+      "confidence": 0.4976329207420349
+    },
+    {
+      "start_time": 13.8005,
+      "end_time": 13.8083,
+      "predicted_class": "LACI",
+      "confidence": 0.5748712420463562
+    },
+    {
+      "start_time": 14.2005,
+      "end_time": 14.209,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.292523056268692
+    },
+    {
+      "start_time": 14.4185,
+      "end_time": 14.4269,
+      "predicted_class": "PESU",
+      "confidence": 0.3567310571670532
+    }
+  ],
+  "2MU01134_20240523_211831.wav": [
+    {
+      "start_time": 0.0775,
+      "end_time": 0.0856,
+      "predicted_class": "PESU",
+      "confidence": 0.9919077157974243
+    },
+    {
+      "start_time": 0.1835,
+      "end_time": 0.1918,
+      "predicted_class": "PESU",
+      "confidence": 0.9787222743034363
+    },
+    {
+      "start_time": 0.2895,
+      "end_time": 0.2979,
+      "predicted_class": "PESU",
+      "confidence": 0.9967303276062012
+    },
+    {
+      "start_time": 0.4055,
+      "end_time": 0.4132,
+      "predicted_class": "PESU",
+      "confidence": 0.9463692903518677
+    },
+    {
+      "start_time": 0.5125,
+      "end_time": 0.5204,
+      "predicted_class": "PESU",
+      "confidence": 0.9941281080245972
+    },
+    {
+      "start_time": 0.6275,
+      "end_time": 0.6366,
+      "predicted_class": "PESU",
+      "confidence": 0.9911150932312012
+    },
+    {
+      "start_time": 0.7255,
+      "end_time": 0.735,
+      "predicted_class": "PESU",
+      "confidence": 0.9990874528884888
+    },
+    {
+      "start_time": 0.7705,
+      "end_time": 0.7826,
+      "predicted_class": "LABO",
+      "confidence": 0.5028115510940552
+    },
+    {
+      "start_time": 0.8335,
+      "end_time": 0.8422,
+      "predicted_class": "PESU",
+      "confidence": 0.9901900887489319
+    },
+    {
+      "start_time": 0.9355,
+      "end_time": 0.9444,
+      "predicted_class": "PESU",
+      "confidence": 0.9951737523078918
+    },
+    {
+      "start_time": 1.0485,
+      "end_time": 1.0564,
+      "predicted_class": "PESU",
+      "confidence": 0.9808711409568787
+    },
+    {
+      "start_time": 1.1355,
+      "end_time": 1.1434,
+      "predicted_class": "PESU",
+      "confidence": 0.9950205087661743
+    },
+    {
+      "start_time": 1.2075,
+      "end_time": 1.2144,
+      "predicted_class": "PESU",
+      "confidence": 0.9639148712158203
+    },
+    {
+      "start_time": 1.2865,
+      "end_time": 1.2949,
+      "predicted_class": "PESU",
+      "confidence": 0.9954694509506226
+    },
+    {
+      "start_time": 1.3865,
+      "end_time": 1.3959,
+      "predicted_class": "PESU",
+      "confidence": 0.9939064383506775
+    },
+    {
+      "start_time": 1.4585,
+      "end_time": 1.4637,
+      "predicted_class": "PESU",
+      "confidence": 0.5358529686927795
+    },
+    {
+      "start_time": 1.5315,
+      "end_time": 1.5396,
+      "predicted_class": "PESU",
+      "confidence": 0.9986991882324219
+    },
+    {
+      "start_time": 1.6345,
+      "end_time": 1.6434,
+      "predicted_class": "PESU",
+      "confidence": 0.9896482825279236
+    },
+    {
+      "start_time": 1.7365,
+      "end_time": 1.7449,
+      "predicted_class": "PESU",
+      "confidence": 0.9976073503494263
+    },
+    {
+      "start_time": 1.8505,
+      "end_time": 1.8587,
+      "predicted_class": "PESU",
+      "confidence": 0.9401931166648865
+    },
+    {
+      "start_time": 1.9415,
+      "end_time": 1.95,
+      "predicted_class": "PESU",
+      "confidence": 0.9958124756813049
+    },
+    {
+      "start_time": 2.0635,
+      "end_time": 2.072,
+      "predicted_class": "PESU",
+      "confidence": 0.9958080053329468
+    },
+    {
+      "start_time": 2.1725,
+      "end_time": 2.1813,
+      "predicted_class": "PESU",
+      "confidence": 0.9883927702903748
+    },
+    {
+      "start_time": 2.1775,
+      "end_time": 2.1898,
+      "predicted_class": "LABO",
+      "confidence": 0.3889913856983185
+    },
+    {
+      "start_time": 2.2785,
+      "end_time": 2.2878,
+      "predicted_class": "PESU",
+      "confidence": 0.9887032508850098
+    },
+    {
+      "start_time": 2.3965,
+      "end_time": 2.4061,
+      "predicted_class": "PESU",
+      "confidence": 0.9987247586250305
+    },
+    {
+      "start_time": 2.4245,
+      "end_time": 2.4364,
+      "predicted_class": "LABO",
+      "confidence": 0.667820394039154
+    },
+    {
+      "start_time": 2.4745,
+      "end_time": 2.4832,
+      "predicted_class": "PESU",
+      "confidence": 0.9992645382881165
+    },
+    {
+      "start_time": 2.6135,
+      "end_time": 2.6227,
+      "predicted_class": "PESU",
+      "confidence": 0.9920167922973633
+    },
+    {
+      "start_time": 2.7205,
+      "end_time": 2.7319,
+      "predicted_class": "PESU",
+      "confidence": 0.9954046010971069
+    },
+    {
+      "start_time": 2.9555,
+      "end_time": 2.9662,
+      "predicted_class": "PESU",
+      "confidence": 0.9942114949226379
+    },
+    {
+      "start_time": 2.9975,
+      "end_time": 3.0082,
+      "predicted_class": "LABO",
+      "confidence": 0.30610308051109314
+    },
+    {
+      "start_time": 3.0795,
+      "end_time": 3.09,
+      "predicted_class": "PESU",
+      "confidence": 0.9978479146957397
+    },
+    {
+      "start_time": 3.1885,
+      "end_time": 3.1987,
+      "predicted_class": "PESU",
+      "confidence": 0.9985339641571045
+    },
+    {
+      "start_time": 3.3085,
+      "end_time": 3.3175,
+      "predicted_class": "PESU",
+      "confidence": 0.9801725745201111
+    },
+    {
+      "start_time": 3.4155,
+      "end_time": 3.4247,
+      "predicted_class": "PESU",
+      "confidence": 0.9966145157814026
+    },
+    {
+      "start_time": 3.5355,
+      "end_time": 3.5434,
+      "predicted_class": "PESU",
+      "confidence": 0.8431044220924377
+    },
+    {
+      "start_time": 3.6335,
+      "end_time": 3.6411,
+      "predicted_class": "PESU",
+      "confidence": 0.9738770723342896
+    },
+    {
+      "start_time": 3.7155,
+      "end_time": 3.7248,
+      "predicted_class": "PESU",
+      "confidence": 0.5479028820991516
+    },
+    {
+      "start_time": 3.7235,
+      "end_time": 3.7369,
+      "predicted_class": "LABO",
+      "confidence": 0.7403543591499329
+    },
+    {
+      "start_time": 3.7825,
+      "end_time": 3.7915,
+      "predicted_class": "PESU",
+      "confidence": 0.994097113609314
+    },
+    {
+      "start_time": 3.8545,
+      "end_time": 3.8628,
+      "predicted_class": "PESU",
+      "confidence": 0.9974652528762817
+    },
+    {
+      "start_time": 3.9495,
+      "end_time": 3.9566,
+      "predicted_class": "PESU",
+      "confidence": 0.6759445667266846
+    },
+    {
+      "start_time": 3.9965,
+      "end_time": 4.0076,
+      "predicted_class": "LABO",
+      "confidence": 0.7294654846191406
+    },
+    {
+      "start_time": 4.0495,
+      "end_time": 4.0572,
+      "predicted_class": "PESU",
+      "confidence": 0.9992308616638184
+    },
+    {
+      "start_time": 4.1275,
+      "end_time": 4.139,
+      "predicted_class": "LABO",
+      "confidence": 0.6717724800109863
+    },
+    {
+      "start_time": 4.1675,
+      "end_time": 4.175,
+      "predicted_class": "PESU",
+      "confidence": 0.9844595193862915
+    },
+    {
+      "start_time": 4.2805,
+      "end_time": 4.2889,
+      "predicted_class": "PESU",
+      "confidence": 0.9985215067863464
+    },
+    {
+      "start_time": 4.3715,
+      "end_time": 4.3828,
+      "predicted_class": "LABO",
+      "confidence": 0.7851661443710327
+    },
+    {
+      "start_time": 4.4035,
+      "end_time": 4.4139,
+      "predicted_class": "PESU",
+      "confidence": 0.9036441445350647
+    },
+    {
+      "start_time": 4.5155,
+      "end_time": 4.5256,
+      "predicted_class": "PESU",
+      "confidence": 0.9989805817604065
+    },
+    {
+      "start_time": 4.6305,
+      "end_time": 4.6407,
+      "predicted_class": "LABO",
+      "confidence": 0.32267069816589355
+    },
+    {
+      "start_time": 4.6325,
+      "end_time": 4.6407,
+      "predicted_class": "PESU",
+      "confidence": 0.8845789432525635
+    },
+    {
+      "start_time": 4.7415,
+      "end_time": 4.7492,
+      "predicted_class": "PESU",
+      "confidence": 0.9919008016586304
+    },
+    {
+      "start_time": 4.8585,
+      "end_time": 4.8682,
+      "predicted_class": "PESU",
+      "confidence": 0.9465006589889526
+    },
+    {
+      "start_time": 4.9235,
+      "end_time": 4.9344,
+      "predicted_class": "LABO",
+      "confidence": 0.8041439652442932
+    },
+    {
+      "start_time": 4.9675,
+      "end_time": 4.9771,
+      "predicted_class": "PESU",
+      "confidence": 0.9964097142219543
+    },
+    {
+      "start_time": 5.0865,
+      "end_time": 5.095,
+      "predicted_class": "PESU",
+      "confidence": 0.990580141544342
+    },
+    {
+      "start_time": 5.1635,
+      "end_time": 5.171,
+      "predicted_class": "PESU",
+      "confidence": 0.9893094301223755
+    },
+    {
+      "start_time": 5.1665,
+      "end_time": 5.179,
+      "predicted_class": "LABO",
+      "confidence": 0.591406524181366
+    },
+    {
+      "start_time": 5.2255,
+      "end_time": 5.2333,
+      "predicted_class": "PESU",
+      "confidence": 0.9572592973709106
+    },
+    {
+      "start_time": 5.3065,
+      "end_time": 5.3143,
+      "predicted_class": "PESU",
+      "confidence": 0.9802179336547852
+    },
+    {
+      "start_time": 5.4255,
+      "end_time": 5.4332,
+      "predicted_class": "PESU",
+      "confidence": 0.9608866572380066
+    },
+    {
+      "start_time": 5.5345,
+      "end_time": 5.5438,
+      "predicted_class": "PESU",
+      "confidence": 0.9900537729263306
+    },
+    {
+      "start_time": 5.6545,
+      "end_time": 5.6626,
+      "predicted_class": "PESU",
+      "confidence": 0.8158261179924011
+    },
+    {
+      "start_time": 5.7645,
+      "end_time": 5.7739,
+      "predicted_class": "PESU",
+      "confidence": 0.9950657486915588
+    },
+    {
+      "start_time": 5.8805,
+      "end_time": 5.8896,
+      "predicted_class": "PESU",
+      "confidence": 0.9804311394691467
+    },
+    {
+      "start_time": 5.9905,
+      "end_time": 5.999,
+      "predicted_class": "PESU",
+      "confidence": 0.9960830211639404
+    },
+    {
+      "start_time": 6.2215,
+      "end_time": 6.2296,
+      "predicted_class": "PESU",
+      "confidence": 0.9939633011817932
+    },
+    {
+      "start_time": 6.4485,
+      "end_time": 6.4603,
+      "predicted_class": "PESU",
+      "confidence": 0.9956513047218323
+    },
+    {
+      "start_time": 8.4155,
+      "end_time": 8.4271,
+      "predicted_class": "LACI",
+      "confidence": 0.40068507194519043
+    }
+  ],
+  "2MU01134_20240524_025510.wav": [
+    {
+      "start_time": 0.0955,
+      "end_time": 0.106,
+      "predicted_class": "PESU",
+      "confidence": 0.9990298748016357
+    },
+    {
+      "start_time": 0.2015,
+      "end_time": 0.2129,
+      "predicted_class": "PESU",
+      "confidence": 0.9828216433525085
+    },
+    {
+      "start_time": 0.3225,
+      "end_time": 0.334,
+      "predicted_class": "PESU",
+      "confidence": 0.9988062381744385
+    },
+    {
+      "start_time": 0.4355,
+      "end_time": 0.4475,
+      "predicted_class": "PESU",
+      "confidence": 0.9922415018081665
+    },
+    {
+      "start_time": 0.7595,
+      "end_time": 0.7694,
+      "predicted_class": "PESU",
+      "confidence": 0.9975318908691406
+    },
+    {
+      "start_time": 0.9765,
+      "end_time": 0.988,
+      "predicted_class": "PESU",
+      "confidence": 0.9917284846305847
+    },
+    {
+      "start_time": 1.0795,
+      "end_time": 1.0904,
+      "predicted_class": "PESU",
+      "confidence": 0.9970399737358093
+    },
+    {
+      "start_time": 1.2035,
+      "end_time": 1.2135,
+      "predicted_class": "LABO",
+      "confidence": 0.3862493634223938
+    },
+    {
+      "start_time": 1.2995,
+      "end_time": 1.3106,
+      "predicted_class": "PESU",
+      "confidence": 0.9985899329185486
+    },
+    {
+      "start_time": 1.4005,
+      "end_time": 1.4103,
+      "predicted_class": "PESU",
+      "confidence": 0.9873349666595459
+    },
+    {
+      "start_time": 1.4985,
+      "end_time": 1.5086,
+      "predicted_class": "PESU",
+      "confidence": 0.9982951283454895
+    },
+    {
+      "start_time": 1.7225,
+      "end_time": 1.7354,
+      "predicted_class": "PESU",
+      "confidence": 0.9963740706443787
+    },
+    {
+      "start_time": 1.8365,
+      "end_time": 1.8496,
+      "predicted_class": "PESU",
+      "confidence": 0.9989331364631653
+    },
+    {
+      "start_time": 2.0415,
+      "end_time": 2.0527,
+      "predicted_class": "PESU",
+      "confidence": 0.9961550831794739
+    },
+    {
+      "start_time": 2.1645,
+      "end_time": 2.1773,
+      "predicted_class": "PESU",
+      "confidence": 0.9991299510002136
+    },
+    {
+      "start_time": 2.3685,
+      "end_time": 2.3813,
+      "predicted_class": "PESU",
+      "confidence": 0.9995905756950378
+    },
+    {
+      "start_time": 2.6985,
+      "end_time": 2.7152,
+      "predicted_class": "PESU",
+      "confidence": 0.8742823600769043
+    },
+    {
+      "start_time": 2.9165,
+      "end_time": 2.9303,
+      "predicted_class": "PESU",
+      "confidence": 0.9995294809341431
+    },
+    {
+      "start_time": 3.0265,
+      "end_time": 3.0364,
+      "predicted_class": "PESU",
+      "confidence": 0.990912675857544
+    },
+    {
+      "start_time": 3.2525,
+      "end_time": 3.2653,
+      "predicted_class": "PESU",
+      "confidence": 0.9969876408576965
+    },
+    {
+      "start_time": 3.3625,
+      "end_time": 3.3733,
+      "predicted_class": "PESU",
+      "confidence": 0.9949572682380676
+    },
+    {
+      "start_time": 3.5795,
+      "end_time": 3.593,
+      "predicted_class": "PESU",
+      "confidence": 0.9972710013389587
+    },
+    {
+      "start_time": 3.7835,
+      "end_time": 3.7947,
+      "predicted_class": "PESU",
+      "confidence": 0.9977941513061523
+    },
+    {
+      "start_time": 4.0075,
+      "end_time": 4.021,
+      "predicted_class": "PESU",
+      "confidence": 0.9971482157707214
+    },
+    {
+      "start_time": 4.6475,
+      "end_time": 4.6582,
+      "predicted_class": "PESU",
+      "confidence": 0.9928444027900696
+    },
+    {
+      "start_time": 5.0835,
+      "end_time": 5.0947,
+      "predicted_class": "PESU",
+      "confidence": 0.9990161657333374
+    },
+    {
+      "start_time": 5.1955,
+      "end_time": 5.207,
+      "predicted_class": "PESU",
+      "confidence": 0.9967591166496277
+    },
+    {
+      "start_time": 5.6395,
+      "end_time": 5.6507,
+      "predicted_class": "PESU",
+      "confidence": 0.9225398898124695
+    },
+    {
+      "start_time": 5.8585,
+      "end_time": 5.8691,
+      "predicted_class": "PESU",
+      "confidence": 0.994879961013794
+    },
+    {
+      "start_time": 6.2795,
+      "end_time": 6.29,
+      "predicted_class": "PESU",
+      "confidence": 0.9962313771247864
+    },
+    {
+      "start_time": 6.7065,
+      "end_time": 6.7174,
+      "predicted_class": "PESU",
+      "confidence": 0.9864858388900757
+    },
+    {
+      "start_time": 7.1375,
+      "end_time": 7.148,
+      "predicted_class": "PESU",
+      "confidence": 0.9726260900497437
+    },
+    {
+      "start_time": 7.4615,
+      "end_time": 7.4732,
+      "predicted_class": "PESU",
+      "confidence": 0.9893207550048828
+    }
+  ],
+  "2MU01134_20240524_042918.wav": [
+    {
+      "start_time": 0.2205,
+      "end_time": 0.2291,
+      "predicted_class": "PESU",
+      "confidence": 0.9970805048942566
+    },
+    {
+      "start_time": 0.4475,
+      "end_time": 0.4556,
+      "predicted_class": "PESU",
+      "confidence": 0.9980630278587341
+    },
+    {
+      "start_time": 0.6705,
+      "end_time": 0.6803,
+      "predicted_class": "PESU",
+      "confidence": 0.9977766871452332
+    },
+    {
+      "start_time": 0.7965,
+      "end_time": 0.8044,
+      "predicted_class": "PESU",
+      "confidence": 0.9990254640579224
+    },
+    {
+      "start_time": 1.0275,
+      "end_time": 1.0363,
+      "predicted_class": "PESU",
+      "confidence": 0.9661223888397217
+    },
+    {
+      "start_time": 1.1435,
+      "end_time": 1.1513,
+      "predicted_class": "PESU",
+      "confidence": 0.9987292885780334
+    },
+    {
+      "start_time": 1.2545,
+      "end_time": 1.2626,
+      "predicted_class": "PESU",
+      "confidence": 0.9981784820556641
+    },
+    {
+      "start_time": 1.4555,
+      "end_time": 1.4627,
+      "predicted_class": "PESU",
+      "confidence": 0.9948524832725525
+    },
+    {
+      "start_time": 1.5845,
+      "end_time": 1.5922,
+      "predicted_class": "PESU",
+      "confidence": 0.9995409250259399
+    },
+    {
+      "start_time": 1.6955,
+      "end_time": 1.7026,
+      "predicted_class": "PESU",
+      "confidence": 0.9993516802787781
+    },
+    {
+      "start_time": 1.8105,
+      "end_time": 1.8176,
+      "predicted_class": "PESU",
+      "confidence": 0.9937620759010315
+    },
+    {
+      "start_time": 1.9205,
+      "end_time": 1.9274,
+      "predicted_class": "PESU",
+      "confidence": 0.9991436004638672
+    },
+    {
+      "start_time": 2.0365,
+      "end_time": 2.0434,
+      "predicted_class": "PESU",
+      "confidence": 0.9934366345405579
+    },
+    {
+      "start_time": 2.1485,
+      "end_time": 2.1549,
+      "predicted_class": "PESU",
+      "confidence": 0.9979841709136963
+    },
+    {
+      "start_time": 2.3355,
+      "end_time": 2.3425,
+      "predicted_class": "PESU",
+      "confidence": 0.9796476364135742
+    },
+    {
+      "start_time": 2.4225,
+      "end_time": 2.4303,
+      "predicted_class": "PESU",
+      "confidence": 0.9893664717674255
+    },
+    {
+      "start_time": 2.5655,
+      "end_time": 2.572,
+      "predicted_class": "PESU",
+      "confidence": 0.9812737703323364
+    },
+    {
+      "start_time": 2.6815,
+      "end_time": 2.6891,
+      "predicted_class": "PESU",
+      "confidence": 0.978729784488678
+    },
+    {
+      "start_time": 2.7995,
+      "end_time": 2.8065,
+      "predicted_class": "PESU",
+      "confidence": 0.9947918057441711
+    },
+    {
+      "start_time": 2.9245,
+      "end_time": 2.9314,
+      "predicted_class": "PESU",
+      "confidence": 0.9913631677627563
+    },
+    {
+      "start_time": 3.0415,
+      "end_time": 3.0496,
+      "predicted_class": "PESU",
+      "confidence": 0.9382534623146057
+    },
+    {
+      "start_time": 3.2585,
+      "end_time": 3.266,
+      "predicted_class": "PESU",
+      "confidence": 0.9947184324264526
+    },
+    {
+      "start_time": 3.3785,
+      "end_time": 3.3861,
+      "predicted_class": "PESU",
+      "confidence": 0.6962206959724426
+    },
+    {
+      "start_time": 3.5955,
+      "end_time": 3.6022,
+      "predicted_class": "LABO",
+      "confidence": 0.6702296137809753
+    },
+    {
+      "start_time": 3.7175,
+      "end_time": 3.7248,
+      "predicted_class": "PESU",
+      "confidence": 0.9624841809272766
+    },
+    {
+      "start_time": 3.9235,
+      "end_time": 3.9333,
+      "predicted_class": "LABO",
+      "confidence": 0.4945860207080841
+    },
+    {
+      "start_time": 4.1425,
+      "end_time": 4.1537,
+      "predicted_class": "PESU",
+      "confidence": 0.8961260318756104
+    },
+    {
+      "start_time": 4.2825,
+      "end_time": 4.2898,
+      "predicted_class": "LABO",
+      "confidence": 0.7054904699325562
+    },
+    {
+      "start_time": 4.4025,
+      "end_time": 4.4085,
+      "predicted_class": "PESU",
+      "confidence": 0.9903832077980042
+    },
+    {
+      "start_time": 4.5005,
+      "end_time": 4.5077,
+      "predicted_class": "PESU",
+      "confidence": 0.9953344464302063
+    },
+    {
+      "start_time": 4.6195,
+      "end_time": 4.626,
+      "predicted_class": "PESU",
+      "confidence": 0.8896422982215881
+    },
+    {
+      "start_time": 4.7185,
+      "end_time": 4.7246,
+      "predicted_class": "PESU",
+      "confidence": 0.9770689606666565
+    },
+    {
+      "start_time": 4.8465,
+      "end_time": 4.8533,
+      "predicted_class": "PESU",
+      "confidence": 0.7911144495010376
+    },
+    {
+      "start_time": 4.9525,
+      "end_time": 4.9594,
+      "predicted_class": "PESU",
+      "confidence": 0.993118166923523
+    },
+    {
+      "start_time": 5.0765,
+      "end_time": 5.0829,
+      "predicted_class": "PESU",
+      "confidence": 0.9954982995986938
+    },
+    {
+      "start_time": 5.1985,
+      "end_time": 5.2062,
+      "predicted_class": "PESU",
+      "confidence": 0.8468937277793884
+    },
+    {
+      "start_time": 5.3135,
+      "end_time": 5.3195,
+      "predicted_class": "PESU",
+      "confidence": 0.8724449872970581
+    },
+    {
+      "start_time": 5.4365,
+      "end_time": 5.4444,
+      "predicted_class": "PESU",
+      "confidence": 0.8807193636894226
+    },
+    {
+      "start_time": 5.5625,
+      "end_time": 5.5699,
+      "predicted_class": "PESU",
+      "confidence": 0.9922854900360107
+    },
+    {
+      "start_time": 5.6775,
+      "end_time": 5.6839,
+      "predicted_class": "PESU",
+      "confidence": 0.9480542540550232
+    },
+    {
+      "start_time": 5.7975,
+      "end_time": 5.8053,
+      "predicted_class": "PESU",
+      "confidence": 0.9615344405174255
+    },
+    {
+      "start_time": 5.8905,
+      "end_time": 5.8983,
+      "predicted_class": "PESU",
+      "confidence": 0.6368724703788757
+    },
+    {
+      "start_time": 5.9855,
+      "end_time": 5.9935,
+      "predicted_class": "PESU",
+      "confidence": 0.8747385740280151
+    },
+    {
+      "start_time": 6.0795,
+      "end_time": 6.0881,
+      "predicted_class": "PESU",
+      "confidence": 0.8959936499595642
+    },
+    {
+      "start_time": 6.1655,
+      "end_time": 6.1744,
+      "predicted_class": "PESU",
+      "confidence": 0.9827059507369995
+    },
+    {
+      "start_time": 6.2425,
+      "end_time": 6.2512,
+      "predicted_class": "PESU",
+      "confidence": 0.9101526141166687
+    },
+    {
+      "start_time": 6.3165,
+      "end_time": 6.3268,
+      "predicted_class": "PESU",
+      "confidence": 0.979167103767395
+    },
+    {
+      "start_time": 6.3885,
+      "end_time": 6.3982,
+      "predicted_class": "PESU",
+      "confidence": 0.988990306854248
+    },
+    {
+      "start_time": 6.4585,
+      "end_time": 6.468,
+      "predicted_class": "LABO",
+      "confidence": 0.5273251533508301
+    },
+    {
+      "start_time": 6.5225,
+      "end_time": 6.5299,
+      "predicted_class": "PESU",
+      "confidence": 0.759077787399292
+    },
+    {
+      "start_time": 6.7825,
+      "end_time": 6.7889,
+      "predicted_class": "PESU",
+      "confidence": 0.7557413578033447
+    },
+    {
+      "start_time": 6.9535,
+      "end_time": 6.9597,
+      "predicted_class": "PESU",
+      "confidence": 0.5456328392028809
+    },
+    {
+      "start_time": 7.0615,
+      "end_time": 7.068,
+      "predicted_class": "PESU",
+      "confidence": 0.9784386157989502
+    },
+    {
+      "start_time": 7.2645,
+      "end_time": 7.2712,
+      "predicted_class": "PESU",
+      "confidence": 0.955693781375885
+    },
+    {
+      "start_time": 7.3885,
+      "end_time": 7.3954,
+      "predicted_class": "PESU",
+      "confidence": 0.9856752753257751
+    },
+    {
+      "start_time": 7.5945,
+      "end_time": 7.6014,
+      "predicted_class": "PESU",
+      "confidence": 0.9805872440338135
+    },
+    {
+      "start_time": 7.8115,
+      "end_time": 7.8194,
+      "predicted_class": "PESU",
+      "confidence": 0.9704921245574951
+    },
+    {
+      "start_time": 7.9355,
+      "end_time": 7.9451,
+      "predicted_class": "PESU",
+      "confidence": 0.9371209144592285
+    },
+    {
+      "start_time": 8.1475,
+      "end_time": 8.1556,
+      "predicted_class": "PESU",
+      "confidence": 0.9611732959747314
+    },
+    {
+      "start_time": 8.4985,
+      "end_time": 8.5074,
+      "predicted_class": "PESU",
+      "confidence": 0.7151666879653931
+    },
+    {
+      "start_time": 8.6815,
+      "end_time": 8.6914,
+      "predicted_class": "PESU",
+      "confidence": 0.8873078227043152
+    },
+    {
+      "start_time": 8.9275,
+      "end_time": 8.9371,
+      "predicted_class": "PESU",
+      "confidence": 0.819259762763977
+    }
+  ],
+  "2MU01134_20240525_031323.wav": [
+    {
+      "start_time": 3.3385,
+      "end_time": 3.3492,
+      "predicted_class": "PESU",
+      "confidence": 0.9057522416114807
+    },
+    {
+      "start_time": 3.5845,
+      "end_time": 3.5935,
+      "predicted_class": "LABO",
+      "confidence": 0.8186969757080078
+    },
+    {
+      "start_time": 3.7045,
+      "end_time": 3.7159,
+      "predicted_class": "PESU",
+      "confidence": 0.9284918308258057
+    },
+    {
+      "start_time": 3.8385,
+      "end_time": 3.8495,
+      "predicted_class": "LABO",
+      "confidence": 0.5864540934562683
+    },
+    {
+      "start_time": 4.2135,
+      "end_time": 4.2272,
+      "predicted_class": "PESU",
+      "confidence": 0.970024049282074
+    },
+    {
+      "start_time": 4.3215,
+      "end_time": 4.329,
+      "predicted_class": "PESU",
+      "confidence": 0.8554654717445374
+    },
+    {
+      "start_time": 4.4305,
+      "end_time": 4.4416,
+      "predicted_class": "PESU",
+      "confidence": 0.9402769207954407
+    },
+    {
+      "start_time": 4.5405,
+      "end_time": 4.5518,
+      "predicted_class": "PESU",
+      "confidence": 0.931333065032959
+    },
+    {
+      "start_time": 4.6435,
+      "end_time": 4.6542,
+      "predicted_class": "PESU",
+      "confidence": 0.9933706521987915
+    },
+    {
+      "start_time": 4.7535,
+      "end_time": 4.7617,
+      "predicted_class": "LABO",
+      "confidence": 0.799168050289154
+    },
+    {
+      "start_time": 4.8655,
+      "end_time": 4.8723,
+      "predicted_class": "LABO",
+      "confidence": 0.8853015303611755
+    },
+    {
+      "start_time": 5.0815,
+      "end_time": 5.0887,
+      "predicted_class": "LABO",
+      "confidence": 0.6252179741859436
+    },
+    {
+      "start_time": 5.3815,
+      "end_time": 5.3891,
+      "predicted_class": "LABO",
+      "confidence": 0.46277838945388794
+    },
+    {
+      "start_time": 5.4915,
+      "end_time": 5.4989,
+      "predicted_class": "PESU",
+      "confidence": 0.9758182764053345
+    },
+    {
+      "start_time": 5.6835,
+      "end_time": 5.6908,
+      "predicted_class": "LABO",
+      "confidence": 0.6194433569908142
+    },
+    {
+      "start_time": 6.0965,
+      "end_time": 6.1019,
+      "predicted_class": "LABO",
+      "confidence": 0.6854850649833679
+    },
+    {
+      "start_time": 6.2055,
+      "end_time": 6.2104,
+      "predicted_class": "LABO",
+      "confidence": 0.7606988549232483
+    },
+    {
+      "start_time": 6.4135,
+      "end_time": 6.4215,
+      "predicted_class": "LABO",
+      "confidence": 0.9364438652992249
+    },
+    {
+      "start_time": 6.5315,
+      "end_time": 6.5392,
+      "predicted_class": "LABO",
+      "confidence": 0.8897693753242493
+    },
+    {
+      "start_time": 6.8685,
+      "end_time": 6.8751,
+      "predicted_class": "LABO",
+      "confidence": 0.7867686748504639
+    },
+    {
+      "start_time": 7.2165,
+      "end_time": 7.2247,
+      "predicted_class": "LABO",
+      "confidence": 0.5278194546699524
+    },
+    {
+      "start_time": 7.6845,
+      "end_time": 7.6956,
+      "predicted_class": "LABO",
+      "confidence": 0.5341442227363586
+    },
+    {
+      "start_time": 8.1565,
+      "end_time": 8.1653,
+      "predicted_class": "PESU",
+      "confidence": 0.8192985653877258
+    },
+    {
+      "start_time": 8.5185,
+      "end_time": 8.5291,
+      "predicted_class": "LABO",
+      "confidence": 0.7266533374786377
+    },
+    {
+      "start_time": 8.6395,
+      "end_time": 8.6474,
+      "predicted_class": "LABO",
+      "confidence": 0.8700240254402161
+    },
+    {
+      "start_time": 8.8715,
+      "end_time": 8.8815,
+      "predicted_class": "PESU",
+      "confidence": 0.7135059237480164
+    },
+    {
+      "start_time": 9.1195,
+      "end_time": 9.131,
+      "predicted_class": "PESU",
+      "confidence": 0.9128758907318115
+    },
+    {
+      "start_time": 9.3485,
+      "end_time": 9.3576,
+      "predicted_class": "PESU",
+      "confidence": 0.5634228587150574
+    },
+    {
+      "start_time": 9.5875,
+      "end_time": 9.5996,
+      "predicted_class": "PESU",
+      "confidence": 0.992944061756134
+    },
+    {
+      "start_time": 9.9545,
+      "end_time": 9.9658,
+      "predicted_class": "PESU",
+      "confidence": 0.4624157249927521
+    },
+    {
+      "start_time": 10.1905,
+      "end_time": 10.1989,
+      "predicted_class": "LABO",
+      "confidence": 0.7303376197814941
+    },
+    {
+      "start_time": 10.4265,
+      "end_time": 10.4372,
+      "predicted_class": "PESU",
+      "confidence": 0.9749772548675537
+    },
+    {
+      "start_time": 10.5505,
+      "end_time": 10.5609,
+      "predicted_class": "PESU",
+      "confidence": 0.8613603711128235
+    },
+    {
+      "start_time": 11.4925,
+      "end_time": 11.5016,
+      "predicted_class": "LABO",
+      "confidence": 0.7668803334236145
+    }
+  ],
+  "2MU01134_20240525_212056.wav": [
+    {
+      "start_time": 0.1095,
+      "end_time": 0.1206,
+      "predicted_class": "PESU",
+      "confidence": 0.995140552520752
+    },
+    {
+      "start_time": 0.2315,
+      "end_time": 0.2417,
+      "predicted_class": "PESU",
+      "confidence": 0.9635075330734253
+    },
+    {
+      "start_time": 0.3415,
+      "end_time": 0.3506,
+      "predicted_class": "PESU",
+      "confidence": 0.9941919445991516
+    },
+    {
+      "start_time": 0.4365,
+      "end_time": 0.4457,
+      "predicted_class": "PESU",
+      "confidence": 0.9322503805160522
+    },
+    {
+      "start_time": 0.5295,
+      "end_time": 0.539,
+      "predicted_class": "PESU",
+      "confidence": 0.8078793287277222
+    },
+    {
+      "start_time": 0.6255,
+      "end_time": 0.6339,
+      "predicted_class": "PESU",
+      "confidence": 0.9438910484313965
+    },
+    {
+      "start_time": 0.7155,
+      "end_time": 0.7251,
+      "predicted_class": "PESU",
+      "confidence": 0.9897804260253906
+    },
+    {
+      "start_time": 0.8095,
+      "end_time": 0.8199,
+      "predicted_class": "PESU",
+      "confidence": 0.9899820685386658
+    },
+    {
+      "start_time": 0.9005,
+      "end_time": 0.9084,
+      "predicted_class": "PESU",
+      "confidence": 0.8018432855606079
+    },
+    {
+      "start_time": 1.2225,
+      "end_time": 1.2338,
+      "predicted_class": "PESU",
+      "confidence": 0.9864556789398193
+    },
+    {
+      "start_time": 1.6495,
+      "end_time": 1.6625,
+      "predicted_class": "PESU",
+      "confidence": 0.997550904750824
+    },
+    {
+      "start_time": 1.7605,
+      "end_time": 1.7701,
+      "predicted_class": "PESU",
+      "confidence": 0.9971681237220764
+    },
+    {
+      "start_time": 1.9005,
+      "end_time": 1.9134,
+      "predicted_class": "PESU",
+      "confidence": 0.9646245837211609
+    },
+    {
+      "start_time": 2.2305,
+      "end_time": 2.2417,
+      "predicted_class": "PESU",
+      "confidence": 0.898939847946167
+    },
+    {
+      "start_time": 2.3305,
+      "end_time": 2.3423,
+      "predicted_class": "PESU",
+      "confidence": 0.9415091276168823
+    },
+    {
+      "start_time": 2.4485,
+      "end_time": 2.4585,
+      "predicted_class": "PESU",
+      "confidence": 0.9938014149665833
+    },
+    {
+      "start_time": 2.5525,
+      "end_time": 2.5625,
+      "predicted_class": "PESU",
+      "confidence": 0.9970576763153076
+    },
+    {
+      "start_time": 2.6485,
+      "end_time": 2.6579,
+      "predicted_class": "PESU",
+      "confidence": 0.9919997453689575
+    },
+    {
+      "start_time": 2.8805,
+      "end_time": 2.8898,
+      "predicted_class": "PESU",
+      "confidence": 0.9963713884353638
+    },
+    {
+      "start_time": 2.9765,
+      "end_time": 2.9857,
+      "predicted_class": "PESU",
+      "confidence": 0.9941034913063049
+    },
+    {
+      "start_time": 3.0535,
+      "end_time": 3.0612,
+      "predicted_class": "PESU",
+      "confidence": 0.993179440498352
+    },
+    {
+      "start_time": 3.1245,
+      "end_time": 3.1326,
+      "predicted_class": "PESU",
+      "confidence": 0.9927451014518738
+    },
+    {
+      "start_time": 3.1935,
+      "end_time": 3.2001,
+      "predicted_class": "PESU",
+      "confidence": 0.8539401292800903
+    },
+    {
+      "start_time": 3.2675,
+      "end_time": 3.2732,
+      "predicted_class": "PESU",
+      "confidence": 0.7075952887535095
+    },
+    {
+      "start_time": 3.5285,
+      "end_time": 3.5378,
+      "predicted_class": "PESU",
+      "confidence": 0.8726575970649719
+    },
+    {
+      "start_time": 3.6205,
+      "end_time": 3.6332,
+      "predicted_class": "PESU",
+      "confidence": 0.9985787868499756
+    },
+    {
+      "start_time": 4.1045,
+      "end_time": 4.113,
+      "predicted_class": "PESU",
+      "confidence": 0.9909760355949402
+    },
+    {
+      "start_time": 4.1675,
+      "end_time": 4.1746,
+      "predicted_class": "PESU",
+      "confidence": 0.7255399227142334
+    },
+    {
+      "start_time": 4.2295,
+      "end_time": 4.2382,
+      "predicted_class": "PESU",
+      "confidence": 0.918725311756134
+    },
+    {
+      "start_time": 4.2925,
+      "end_time": 4.3042,
+      "predicted_class": "PESU",
+      "confidence": 0.9894933700561523
+    },
+    {
+      "start_time": 4.3505,
+      "end_time": 4.3566,
+      "predicted_class": "PESU",
+      "confidence": 0.5457174181938171
+    },
+    {
+      "start_time": 4.8605,
+      "end_time": 4.8709,
+      "predicted_class": "PESU",
+      "confidence": 0.9966183304786682
+    },
+    {
+      "start_time": 4.9475,
+      "end_time": 4.9576,
+      "predicted_class": "PESU",
+      "confidence": 0.9990457892417908
+    },
+    {
+      "start_time": 5.0445,
+      "end_time": 5.0563,
+      "predicted_class": "PESU",
+      "confidence": 0.9786631464958191
+    },
+    {
+      "start_time": 5.1525,
+      "end_time": 5.1627,
+      "predicted_class": "PESU",
+      "confidence": 0.9993343949317932
+    },
+    {
+      "start_time": 5.2615,
+      "end_time": 5.2703,
+      "predicted_class": "PESU",
+      "confidence": 0.9927229285240173
+    },
+    {
+      "start_time": 5.3695,
+      "end_time": 5.3786,
+      "predicted_class": "PESU",
+      "confidence": 0.9993962049484253
+    },
+    {
+      "start_time": 5.4815,
+      "end_time": 5.4903,
+      "predicted_class": "PESU",
+      "confidence": 0.9905537962913513
+    },
+    {
+      "start_time": 5.5775,
+      "end_time": 5.5853,
+      "predicted_class": "PESU",
+      "confidence": 0.775254487991333
+    },
+    {
+      "start_time": 5.6605,
+      "end_time": 5.6691,
+      "predicted_class": "PESU",
+      "confidence": 0.9739181399345398
+    },
+    {
+      "start_time": 5.7565,
+      "end_time": 5.7649,
+      "predicted_class": "PESU",
+      "confidence": 0.9960450530052185
+    },
+    {
+      "start_time": 5.8485,
+      "end_time": 5.8563,
+      "predicted_class": "PESU",
+      "confidence": 0.9751812815666199
+    },
+    {
+      "start_time": 5.9475,
+      "end_time": 5.9556,
+      "predicted_class": "PESU",
+      "confidence": 0.9904609322547913
+    },
+    {
+      "start_time": 6.0455,
+      "end_time": 6.0542,
+      "predicted_class": "PESU",
+      "confidence": 0.9631456732749939
+    },
+    {
+      "start_time": 6.1535,
+      "end_time": 6.1632,
+      "predicted_class": "PESU",
+      "confidence": 0.9976412057876587
+    },
+    {
+      "start_time": 6.2665,
+      "end_time": 6.276,
+      "predicted_class": "PESU",
+      "confidence": 0.9978352189064026
+    },
+    {
+      "start_time": 6.3785,
+      "end_time": 6.3892,
+      "predicted_class": "PESU",
+      "confidence": 0.9949270486831665
+    },
+    {
+      "start_time": 6.4925,
+      "end_time": 6.5027,
+      "predicted_class": "PESU",
+      "confidence": 0.8451357483863831
+    },
+    {
+      "start_time": 6.6075,
+      "end_time": 6.6186,
+      "predicted_class": "PESU",
+      "confidence": 0.9996578693389893
+    },
+    {
+      "start_time": 6.7275,
+      "end_time": 6.7369,
+      "predicted_class": "PESU",
+      "confidence": 0.9964504241943359
+    },
+    {
+      "start_time": 6.8435,
+      "end_time": 6.8546,
+      "predicted_class": "PESU",
+      "confidence": 0.998763918876648
+    },
+    {
+      "start_time": 6.9645,
+      "end_time": 6.9757,
+      "predicted_class": "PESU",
+      "confidence": 0.9994882345199585
+    },
+    {
+      "start_time": 7.0695,
+      "end_time": 7.0784,
+      "predicted_class": "PESU",
+      "confidence": 0.9882595539093018
+    },
+    {
+      "start_time": 7.1845,
+      "end_time": 7.1939,
+      "predicted_class": "PESU",
+      "confidence": 0.9922884106636047
+    },
+    {
+      "start_time": 7.3215,
+      "end_time": 7.3304,
+      "predicted_class": "PESU",
+      "confidence": 0.9935398697853088
+    },
+    {
+      "start_time": 7.5455,
+      "end_time": 7.5571,
+      "predicted_class": "PESU",
+      "confidence": 0.9672384858131409
+    },
+    {
+      "start_time": 7.8615,
+      "end_time": 7.8722,
+      "predicted_class": "PESU",
+      "confidence": 0.9972049593925476
+    },
+    {
+      "start_time": 8.1075,
+      "end_time": 8.1167,
+      "predicted_class": "PESU",
+      "confidence": 0.9985288381576538
+    },
+    {
+      "start_time": 8.2395,
+      "end_time": 8.2512,
+      "predicted_class": "PESU",
+      "confidence": 0.9965576529502869
+    },
+    {
+      "start_time": 8.3585,
+      "end_time": 8.3672,
+      "predicted_class": "PESU",
+      "confidence": 0.9983235001564026
+    },
+    {
+      "start_time": 8.4865,
+      "end_time": 8.497,
+      "predicted_class": "PESU",
+      "confidence": 0.9842669367790222
+    },
+    {
+      "start_time": 8.6015,
+      "end_time": 8.6107,
+      "predicted_class": "PESU",
+      "confidence": 0.9970064759254456
+    },
+    {
+      "start_time": 8.7165,
+      "end_time": 8.7264,
+      "predicted_class": "PESU",
+      "confidence": 0.9886109232902527
+    },
+    {
+      "start_time": 8.8245,
+      "end_time": 8.8329,
+      "predicted_class": "PESU",
+      "confidence": 0.990796685218811
+    }
+  ],
+  "2MU01134_20240526_220644.wav": [
+    {
+      "start_time": 0.1865,
+      "end_time": 0.1967,
+      "predicted_class": "PESU",
+      "confidence": 0.9992145299911499
+    },
+    {
+      "start_time": 0.3795,
+      "end_time": 0.3897,
+      "predicted_class": "PESU",
+      "confidence": 0.9994544386863708
+    },
+    {
+      "start_time": 0.5705,
+      "end_time": 0.5805,
+      "predicted_class": "PESU",
+      "confidence": 0.9976934790611267
+    },
+    {
+      "start_time": 0.8625,
+      "end_time": 0.8731,
+      "predicted_class": "PESU",
+      "confidence": 0.9947110414505005
+    },
+    {
+      "start_time": 1.0705,
+      "end_time": 1.0817,
+      "predicted_class": "PESU",
+      "confidence": 0.9808140397071838
+    },
+    {
+      "start_time": 1.2725,
+      "end_time": 1.2826,
+      "predicted_class": "PESU",
+      "confidence": 0.9993439316749573
+    },
+    {
+      "start_time": 1.4745,
+      "end_time": 1.4863,
+      "predicted_class": "PESU",
+      "confidence": 0.9970611929893494
+    },
+    {
+      "start_time": 1.6805,
+      "end_time": 1.6913,
+      "predicted_class": "PESU",
+      "confidence": 0.9989234805107117
+    },
+    {
+      "start_time": 1.9955,
+      "end_time": 2.0078,
+      "predicted_class": "PESU",
+      "confidence": 0.9971911311149597
+    },
+    {
+      "start_time": 2.2035,
+      "end_time": 2.2155,
+      "predicted_class": "PESU",
+      "confidence": 0.9983386993408203
+    },
+    {
+      "start_time": 2.4125,
+      "end_time": 2.4251,
+      "predicted_class": "PESU",
+      "confidence": 0.9861984252929688
+    },
+    {
+      "start_time": 2.7185,
+      "end_time": 2.7282,
+      "predicted_class": "PESU",
+      "confidence": 0.9953221678733826
+    },
+    {
+      "start_time": 2.9245,
+      "end_time": 2.935,
+      "predicted_class": "PESU",
+      "confidence": 0.9919513463973999
+    },
+    {
+      "start_time": 3.2805,
+      "end_time": 3.2898,
+      "predicted_class": "PESU",
+      "confidence": 0.9907042384147644
+    },
+    {
+      "start_time": 4.2815,
+      "end_time": 4.2943,
+      "predicted_class": "PESU",
+      "confidence": 0.9676508903503418
+    },
+    {
+      "start_time": 4.7675,
+      "end_time": 4.7794,
+      "predicted_class": "PESU",
+      "confidence": 0.988271176815033
+    },
+    {
+      "start_time": 5.7045,
+      "end_time": 5.7152,
+      "predicted_class": "PESU",
+      "confidence": 0.993263840675354
+    }
+  ],
+  "2MU01134_20240527_005228.wav": [
+    {
+      "start_time": 0.1015,
+      "end_time": 0.1092,
+      "predicted_class": "PESU",
+      "confidence": 0.9363270401954651
+    },
+    {
+      "start_time": 0.2095,
+      "end_time": 0.218,
+      "predicted_class": "PESU",
+      "confidence": 0.9929585456848145
+    },
+    {
+      "start_time": 0.3185,
+      "end_time": 0.3271,
+      "predicted_class": "PESU",
+      "confidence": 0.9986347556114197
+    },
+    {
+      "start_time": 0.4295,
+      "end_time": 0.4378,
+      "predicted_class": "PESU",
+      "confidence": 0.9968159794807434
+    },
+    {
+      "start_time": 0.5365,
+      "end_time": 0.5453,
+      "predicted_class": "PESU",
+      "confidence": 0.9981105327606201
+    },
+    {
+      "start_time": 0.6495,
+      "end_time": 0.6578,
+      "predicted_class": "PESU",
+      "confidence": 0.9964020252227783
+    },
+    {
+      "start_time": 0.8605,
+      "end_time": 0.8707,
+      "predicted_class": "PESU",
+      "confidence": 0.9961254000663757
+    },
+    {
+      "start_time": 0.9735,
+      "end_time": 0.9832,
+      "predicted_class": "PESU",
+      "confidence": 0.9927874207496643
+    },
+    {
+      "start_time": 1.1845,
+      "end_time": 1.1934,
+      "predicted_class": "PESU",
+      "confidence": 0.998938262462616
+    },
+    {
+      "start_time": 1.2985,
+      "end_time": 1.3082,
+      "predicted_class": "PESU",
+      "confidence": 0.9988448619842529
+    },
+    {
+      "start_time": 1.4085,
+      "end_time": 1.4182,
+      "predicted_class": "PESU",
+      "confidence": 0.9975542426109314
+    },
+    {
+      "start_time": 1.5155,
+      "end_time": 1.526,
+      "predicted_class": "PESU",
+      "confidence": 0.9992802739143372
+    },
+    {
+      "start_time": 1.6185,
+      "end_time": 1.6288,
+      "predicted_class": "PESU",
+      "confidence": 0.9952979683876038
+    },
+    {
+      "start_time": 1.7245,
+      "end_time": 1.7345,
+      "predicted_class": "PESU",
+      "confidence": 0.9991931319236755
+    },
+    {
+      "start_time": 1.8355,
+      "end_time": 1.8448,
+      "predicted_class": "PESU",
+      "confidence": 0.9987084865570068
+    },
+    {
+      "start_time": 1.9305,
+      "end_time": 1.9401,
+      "predicted_class": "PESU",
+      "confidence": 0.9816983938217163
+    },
+    {
+      "start_time": 2.0055,
+      "end_time": 2.0116,
+      "predicted_class": "PESU",
+      "confidence": 0.6491994857788086
+    },
+    {
+      "start_time": 2.0875,
+      "end_time": 2.0931,
+      "predicted_class": "PESU",
+      "confidence": 0.5400050282478333
+    },
+    {
+      "start_time": 2.1945,
+      "end_time": 2.2035,
+      "predicted_class": "PESU",
+      "confidence": 0.9734862446784973
+    },
+    {
+      "start_time": 2.3125,
+      "end_time": 2.3216,
+      "predicted_class": "PESU",
+      "confidence": 0.9965305924415588
+    },
+    {
+      "start_time": 2.4335,
+      "end_time": 2.4424,
+      "predicted_class": "PESU",
+      "confidence": 0.985136866569519
+    },
+    {
+      "start_time": 2.6455,
+      "end_time": 2.6546,
+      "predicted_class": "PESU",
+      "confidence": 0.9969891905784607
+    },
+    {
+      "start_time": 2.8525,
+      "end_time": 2.8614,
+      "predicted_class": "PESU",
+      "confidence": 0.997651994228363
+    },
+    {
+      "start_time": 2.9685,
+      "end_time": 2.9788,
+      "predicted_class": "PESU",
+      "confidence": 0.9895780682563782
+    },
+    {
+      "start_time": 3.0775,
+      "end_time": 3.0864,
+      "predicted_class": "PESU",
+      "confidence": 0.9979206919670105
+    },
+    {
+      "start_time": 3.1895,
+      "end_time": 3.1977,
+      "predicted_class": "PESU",
+      "confidence": 0.9945234060287476
+    },
+    {
+      "start_time": 3.3025,
+      "end_time": 3.3145,
+      "predicted_class": "PESU",
+      "confidence": 0.9985835552215576
+    },
+    {
+      "start_time": 3.3975,
+      "end_time": 3.4044,
+      "predicted_class": "PESU",
+      "confidence": 0.9267851114273071
+    },
+    {
+      "start_time": 3.4895,
+      "end_time": 3.4981,
+      "predicted_class": "PESU",
+      "confidence": 0.9989383816719055
+    },
+    {
+      "start_time": 3.6085,
+      "end_time": 3.6188,
+      "predicted_class": "PESU",
+      "confidence": 0.9988749623298645
+    },
+    {
+      "start_time": 3.7195,
+      "end_time": 3.7286,
+      "predicted_class": "PESU",
+      "confidence": 0.9979427456855774
+    },
+    {
+      "start_time": 3.9355,
+      "end_time": 3.944,
+      "predicted_class": "PESU",
+      "confidence": 0.9966243505477905
+    },
+    {
+      "start_time": 4.1705,
+      "end_time": 4.1806,
+      "predicted_class": "PESU",
+      "confidence": 0.9943317174911499
+    },
+    {
+      "start_time": 4.3865,
+      "end_time": 4.3973,
+      "predicted_class": "PESU",
+      "confidence": 0.9963805079460144
+    },
+    {
+      "start_time": 4.5005,
+      "end_time": 4.5088,
+      "predicted_class": "PESU",
+      "confidence": 0.9961764812469482
+    },
+    {
+      "start_time": 4.6175,
+      "end_time": 4.6265,
+      "predicted_class": "PESU",
+      "confidence": 0.994845986366272
+    },
+    {
+      "start_time": 4.8315,
+      "end_time": 4.8401,
+      "predicted_class": "PESU",
+      "confidence": 0.9965875148773193
+    },
+    {
+      "start_time": 4.9505,
+      "end_time": 4.9603,
+      "predicted_class": "PESU",
+      "confidence": 0.9977735877037048
+    },
+    {
+      "start_time": 5.1655,
+      "end_time": 5.1746,
+      "predicted_class": "PESU",
+      "confidence": 0.9955193996429443
+    },
+    {
+      "start_time": 5.2885,
+      "end_time": 5.2992,
+      "predicted_class": "PESU",
+      "confidence": 0.9870883226394653
+    },
+    {
+      "start_time": 5.5105,
+      "end_time": 5.5199,
+      "predicted_class": "PESU",
+      "confidence": 0.9967490434646606
+    },
+    {
+      "start_time": 5.6375,
+      "end_time": 5.6484,
+      "predicted_class": "PESU",
+      "confidence": 0.9939087629318237
+    },
+    {
+      "start_time": 5.8615,
+      "end_time": 5.8705,
+      "predicted_class": "PESU",
+      "confidence": 0.9989670515060425
+    },
+    {
+      "start_time": 5.9915,
+      "end_time": 6.0014,
+      "predicted_class": "PESU",
+      "confidence": 0.9979835748672485
+    },
+    {
+      "start_time": 6.0995,
+      "end_time": 6.1109,
+      "predicted_class": "PESU",
+      "confidence": 0.989137589931488
+    },
+    {
+      "start_time": 6.2055,
+      "end_time": 6.2149,
+      "predicted_class": "PESU",
+      "confidence": 0.9990553259849548
+    },
+    {
+      "start_time": 6.4325,
+      "end_time": 6.4428,
+      "predicted_class": "PESU",
+      "confidence": 0.9824275374412537
+    },
+    {
+      "start_time": 6.7705,
+      "end_time": 6.7802,
+      "predicted_class": "PESU",
+      "confidence": 0.9901874661445618
+    },
+    {
+      "start_time": 6.9075,
+      "end_time": 6.9179,
+      "predicted_class": "PESU",
+      "confidence": 0.9696705341339111
+    },
+    {
+      "start_time": 7.1295,
+      "end_time": 7.1383,
+      "predicted_class": "PESU",
+      "confidence": 0.98775315284729
+    },
+    {
+      "start_time": 7.2465,
+      "end_time": 7.2552,
+      "predicted_class": "PESU",
+      "confidence": 0.9628573656082153
+    },
+    {
+      "start_time": 7.5865,
+      "end_time": 7.5972,
+      "predicted_class": "PESU",
+      "confidence": 0.996505618095398
+    },
+    {
+      "start_time": 7.8215,
+      "end_time": 7.8313,
+      "predicted_class": "PESU",
+      "confidence": 0.9953124523162842
+    },
+    {
+      "start_time": 8.1715,
+      "end_time": 8.182,
+      "predicted_class": "PESU",
+      "confidence": 0.9961537718772888
+    },
+    {
+      "start_time": 8.4215,
+      "end_time": 8.4298,
+      "predicted_class": "PESU",
+      "confidence": 0.9835688471794128
+    },
+    {
+      "start_time": 8.9955,
+      "end_time": 9.0052,
+      "predicted_class": "PESU",
+      "confidence": 0.9567264318466187
+    }
+  ],
+  "2MU01134_20240527_211053.wav": [
+    {
+      "start_time": 0.1085,
+      "end_time": 0.118,
+      "predicted_class": "PESU",
+      "confidence": 0.9917029738426208
+    },
+    {
+      "start_time": 0.2145,
+      "end_time": 0.2259,
+      "predicted_class": "PESU",
+      "confidence": 0.9730887413024902
+    },
+    {
+      "start_time": 0.3215,
+      "end_time": 0.3333,
+      "predicted_class": "PESU",
+      "confidence": 0.9977744221687317
+    },
+    {
+      "start_time": 0.4235,
+      "end_time": 0.4344,
+      "predicted_class": "PESU",
+      "confidence": 0.9927043914794922
+    },
+    {
+      "start_time": 0.5315,
+      "end_time": 0.5452,
+      "predicted_class": "PESU",
+      "confidence": 0.9875133633613586
+    },
+    {
+      "start_time": 0.6385,
+      "end_time": 0.6515,
+      "predicted_class": "PESU",
+      "confidence": 0.9977473616600037
+    },
+    {
+      "start_time": 0.7485,
+      "end_time": 0.759,
+      "predicted_class": "PESU",
+      "confidence": 0.988470196723938
+    },
+    {
+      "start_time": 0.8525,
+      "end_time": 0.8645,
+      "predicted_class": "PESU",
+      "confidence": 0.9985135197639465
+    },
+    {
+      "start_time": 1.0555,
+      "end_time": 1.0696,
+      "predicted_class": "PESU",
+      "confidence": 0.9940364360809326
+    },
+    {
+      "start_time": 1.3735,
+      "end_time": 1.3856,
+      "predicted_class": "PESU",
+      "confidence": 0.9811227321624756
+    },
+    {
+      "start_time": 1.4755,
+      "end_time": 1.4857,
+      "predicted_class": "PESU",
+      "confidence": 0.9993042945861816
+    },
+    {
+      "start_time": 1.5785,
+      "end_time": 1.5884,
+      "predicted_class": "PESU",
+      "confidence": 0.9964497089385986
+    },
+    {
+      "start_time": 1.6785,
+      "end_time": 1.6908,
+      "predicted_class": "PESU",
+      "confidence": 0.9941579103469849
+    },
+    {
+      "start_time": 1.7885,
+      "end_time": 1.8006,
+      "predicted_class": "PESU",
+      "confidence": 0.9716828465461731
+    },
+    {
+      "start_time": 1.8915,
+      "end_time": 1.9032,
+      "predicted_class": "PESU",
+      "confidence": 0.9990530610084534
+    }
+  ],
+  "2MU01134_20240528_000539.wav": [
+    {
+      "start_time": 0.2045,
+      "end_time": 0.2185,
+      "predicted_class": "PESU",
+      "confidence": 0.9700488448143005
+    },
+    {
+      "start_time": 0.5185,
+      "end_time": 0.5327,
+      "predicted_class": "PESU",
+      "confidence": 0.9967342615127563
+    },
+    {
+      "start_time": 0.7375,
+      "end_time": 0.7483,
+      "predicted_class": "PESU",
+      "confidence": 0.999071478843689
+    },
+    {
+      "start_time": 0.8555,
+      "end_time": 0.865,
+      "predicted_class": "PESU",
+      "confidence": 0.9985516667366028
+    },
+    {
+      "start_time": 0.9745,
+      "end_time": 0.9878,
+      "predicted_class": "PESU",
+      "confidence": 0.9043891429901123
+    },
+    {
+      "start_time": 1.0985,
+      "end_time": 1.1066,
+      "predicted_class": "PESU",
+      "confidence": 0.9808284640312195
+    },
+    {
+      "start_time": 1.2325,
+      "end_time": 1.2426,
+      "predicted_class": "PESU",
+      "confidence": 0.9973108768463135
+    },
+    {
+      "start_time": 1.3525,
+      "end_time": 1.3632,
+      "predicted_class": "PESU",
+      "confidence": 0.9938871264457703
+    },
+    {
+      "start_time": 1.4705,
+      "end_time": 1.481,
+      "predicted_class": "PESU",
+      "confidence": 0.9959014058113098
+    },
+    {
+      "start_time": 1.5795,
+      "end_time": 1.5899,
+      "predicted_class": "PESU",
+      "confidence": 0.5991843938827515
+    },
+    {
+      "start_time": 1.6755,
+      "end_time": 1.685,
+      "predicted_class": "PESU",
+      "confidence": 0.9661567807197571
+    },
+    {
+      "start_time": 1.7575,
+      "end_time": 1.7649,
+      "predicted_class": "PESU",
+      "confidence": 0.9455325603485107
+    },
+    {
+      "start_time": 1.8595,
+      "end_time": 1.8669,
+      "predicted_class": "PESU",
+      "confidence": 0.8844826817512512
+    },
+    {
+      "start_time": 2.0415,
+      "end_time": 2.0515,
+      "predicted_class": "PESU",
+      "confidence": 0.9986194372177124
+    },
+    {
+      "start_time": 2.2305,
+      "end_time": 2.2406,
+      "predicted_class": "PESU",
+      "confidence": 0.9968807697296143
+    },
+    {
+      "start_time": 2.4415,
+      "end_time": 2.4504,
+      "predicted_class": "PESU",
+      "confidence": 0.9943939447402954
+    },
+    {
+      "start_time": 2.6535,
+      "end_time": 2.6648,
+      "predicted_class": "PESU",
+      "confidence": 0.9854501485824585
+    },
+    {
+      "start_time": 2.8795,
+      "end_time": 2.8893,
+      "predicted_class": "PESU",
+      "confidence": 0.9989994168281555
+    },
+    {
+      "start_time": 3.3045,
+      "end_time": 3.3151,
+      "predicted_class": "PESU",
+      "confidence": 0.9977994561195374
+    },
+    {
+      "start_time": 3.5245,
+      "end_time": 3.5346,
+      "predicted_class": "PESU",
+      "confidence": 0.9980440139770508
+    },
+    {
+      "start_time": 3.8515,
+      "end_time": 3.8621,
+      "predicted_class": "PESU",
+      "confidence": 0.9985626339912415
+    },
+    {
+      "start_time": 4.0705,
+      "end_time": 4.0816,
+      "predicted_class": "PESU",
+      "confidence": 0.9945154786109924
+    },
+    {
+      "start_time": 4.4035,
+      "end_time": 4.4171,
+      "predicted_class": "PESU",
+      "confidence": 0.9915608763694763
+    },
+    {
+      "start_time": 4.6235,
+      "end_time": 4.6399,
+      "predicted_class": "PESU",
+      "confidence": 0.9439941048622131
+    },
+    {
+      "start_time": 5.1775,
+      "end_time": 5.1872,
+      "predicted_class": "PESU",
+      "confidence": 0.9981846213340759
+    },
+    {
+      "start_time": 5.5005,
+      "end_time": 5.5124,
+      "predicted_class": "PESU",
+      "confidence": 0.9474213719367981
+    },
+    {
+      "start_time": 5.7245,
+      "end_time": 5.7366,
+      "predicted_class": "PESU",
+      "confidence": 0.994565486907959
+    },
+    {
+      "start_time": 6.1545,
+      "end_time": 6.1669,
+      "predicted_class": "PESU",
+      "confidence": 0.9906448125839233
+    },
+    {
+      "start_time": 6.3745,
+      "end_time": 6.3854,
+      "predicted_class": "PESU",
+      "confidence": 0.9684386849403381
+    },
+    {
+      "start_time": 6.5935,
+      "end_time": 6.6031,
+      "predicted_class": "PESU",
+      "confidence": 0.9964732527732849
+    },
+    {
+      "start_time": 6.8105,
+      "end_time": 6.8199,
+      "predicted_class": "PESU",
+      "confidence": 0.9911952018737793
+    },
+    {
+      "start_time": 7.0305,
+      "end_time": 7.041,
+      "predicted_class": "PESU",
+      "confidence": 0.9875281453132629
+    },
+    {
+      "start_time": 7.3555,
+      "end_time": 7.3656,
+      "predicted_class": "PESU",
+      "confidence": 0.9924822449684143
+    },
+    {
+      "start_time": 8.0055,
+      "end_time": 8.0163,
+      "predicted_class": "PESU",
+      "confidence": 0.9774695038795471
+    },
+    {
+      "start_time": 8.4535,
+      "end_time": 8.465,
+      "predicted_class": "PESU",
+      "confidence": 0.9492133259773254
+    },
+    {
+      "start_time": 8.6735,
+      "end_time": 8.6841,
+      "predicted_class": "PESU",
+      "confidence": 0.9511373043060303
+    },
+    {
+      "start_time": 8.7385,
+      "end_time": 8.7455,
+      "predicted_class": "LABO",
+      "confidence": 0.5211562514305115
+    },
+    {
+      "start_time": 9.1185,
+      "end_time": 9.1307,
+      "predicted_class": "PESU",
+      "confidence": 0.9759880900382996
+    }
+  ],
+  "2MU01134_20240528_210559.wav": [
+    {
+      "start_time": 0.1085,
+      "end_time": 0.1198,
+      "predicted_class": "PESU",
+      "confidence": 0.9981521964073181
+    },
+    {
+      "start_time": 0.2215,
+      "end_time": 0.2326,
+      "predicted_class": "PESU",
+      "confidence": 0.9971678853034973
+    },
+    {
+      "start_time": 0.3175,
+      "end_time": 0.3277,
+      "predicted_class": "PESU",
+      "confidence": 0.9971585273742676
+    },
+    {
+      "start_time": 0.4045,
+      "end_time": 0.4139,
+      "predicted_class": "PESU",
+      "confidence": 0.9859957098960876
+    },
+    {
+      "start_time": 0.5055,
+      "end_time": 0.5145,
+      "predicted_class": "PESU",
+      "confidence": 0.9912715554237366
+    },
+    {
+      "start_time": 0.6135,
+      "end_time": 0.6252,
+      "predicted_class": "PESU",
+      "confidence": 0.9992135763168335
+    },
+    {
+      "start_time": 0.7265,
+      "end_time": 0.7382,
+      "predicted_class": "PESU",
+      "confidence": 0.9993269443511963
+    },
+    {
+      "start_time": 0.8335,
+      "end_time": 0.8443,
+      "predicted_class": "PESU",
+      "confidence": 0.999279797077179
+    },
+    {
+      "start_time": 0.9495,
+      "end_time": 0.9594,
+      "predicted_class": "PESU",
+      "confidence": 0.9976016879081726
+    },
+    {
+      "start_time": 1.0625,
+      "end_time": 1.0752,
+      "predicted_class": "PESU",
+      "confidence": 0.9994774460792542
+    },
+    {
+      "start_time": 1.1845,
+      "end_time": 1.1954,
+      "predicted_class": "PESU",
+      "confidence": 0.9953569769859314
+    },
+    {
+      "start_time": 1.3015,
+      "end_time": 1.3126,
+      "predicted_class": "PESU",
+      "confidence": 0.999383807182312
+    },
+    {
+      "start_time": 1.4215,
+      "end_time": 1.4341,
+      "predicted_class": "PESU",
+      "confidence": 0.9994884729385376
+    },
+    {
+      "start_time": 1.5445,
+      "end_time": 1.5549,
+      "predicted_class": "PESU",
+      "confidence": 0.997347354888916
+    },
+    {
+      "start_time": 1.6665,
+      "end_time": 1.678,
+      "predicted_class": "PESU",
+      "confidence": 0.9984380602836609
+    },
+    {
+      "start_time": 1.7785,
+      "end_time": 1.7876,
+      "predicted_class": "PESU",
+      "confidence": 0.9941712021827698
+    },
+    {
+      "start_time": 1.8865,
+      "end_time": 1.8947,
+      "predicted_class": "PESU",
+      "confidence": 0.9832416772842407
+    },
+    {
+      "start_time": 2.0055,
+      "end_time": 2.0165,
+      "predicted_class": "PESU",
+      "confidence": 0.997512936592102
+    },
+    {
+      "start_time": 2.1085,
+      "end_time": 2.1186,
+      "predicted_class": "PESU",
+      "confidence": 0.9974731802940369
+    },
+    {
+      "start_time": 2.6985,
+      "end_time": 2.7088,
+      "predicted_class": "PESU",
+      "confidence": 0.9820475578308105
+    },
+    {
+      "start_time": 2.8175,
+      "end_time": 2.8284,
+      "predicted_class": "PESU",
+      "confidence": 0.9875713586807251
+    },
+    {
+      "start_time": 2.9395,
+      "end_time": 2.9504,
+      "predicted_class": "PESU",
+      "confidence": 0.9156299829483032
+    },
+    {
+      "start_time": 3.0555,
+      "end_time": 3.0693,
+      "predicted_class": "PESU",
+      "confidence": 0.9998995065689087
+    }
+  ],
+  "2MU01134_20240602_011953.wav": [
+    {
+      "start_time": 0.5995,
+      "end_time": 0.6119,
+      "predicted_class": "PESU",
+      "confidence": 0.999754011631012
+    },
+    {
+      "start_time": 0.8255,
+      "end_time": 0.837,
+      "predicted_class": "PESU",
+      "confidence": 0.999649167060852
+    },
+    {
+      "start_time": 1.1515,
+      "end_time": 1.1629,
+      "predicted_class": "PESU",
+      "confidence": 0.9990839958190918
+    },
+    {
+      "start_time": 1.2945,
+      "end_time": 1.3059,
+      "predicted_class": "PESU",
+      "confidence": 0.754285454750061
+    },
+    {
+      "start_time": 1.5065,
+      "end_time": 1.5193,
+      "predicted_class": "PESU",
+      "confidence": 0.9992316961288452
+    },
+    {
+      "start_time": 1.7395,
+      "end_time": 1.7544,
+      "predicted_class": "PESU",
+      "confidence": 0.9818819165229797
+    },
+    {
+      "start_time": 1.8725,
+      "end_time": 1.8872,
+      "predicted_class": "PESU",
+      "confidence": 0.9839354753494263
+    },
+    {
+      "start_time": 2.0985,
+      "end_time": 2.1121,
+      "predicted_class": "PESU",
+      "confidence": 0.9996129870414734
+    },
+    {
+      "start_time": 2.2475,
+      "end_time": 2.2585,
+      "predicted_class": "PESU",
+      "confidence": 0.9828588366508484
+    },
+    {
+      "start_time": 2.3335,
+      "end_time": 2.3417,
+      "predicted_class": "PESU",
+      "confidence": 0.9780108332633972
+    },
+    {
+      "start_time": 2.4525,
+      "end_time": 2.4648,
+      "predicted_class": "PESU",
+      "confidence": 0.998428463935852
+    },
+    {
+      "start_time": 2.6745,
+      "end_time": 2.6867,
+      "predicted_class": "PESU",
+      "confidence": 0.9817523956298828
+    },
+    {
+      "start_time": 2.7995,
+      "end_time": 2.811,
+      "predicted_class": "PESU",
+      "confidence": 0.9957523345947266
+    },
+    {
+      "start_time": 3.3075,
+      "end_time": 3.3166,
+      "predicted_class": "PESU",
+      "confidence": 0.6161254644393921
+    },
+    {
+      "start_time": 3.5065,
+      "end_time": 3.5145,
+      "predicted_class": "PESU",
+      "confidence": 0.3388505280017853
+    },
+    {
+      "start_time": 3.6125,
+      "end_time": 3.6209,
+      "predicted_class": "LABO",
+      "confidence": 0.44382423162460327
+    },
+    {
+      "start_time": 3.7125,
+      "end_time": 3.7203,
+      "predicted_class": "LABO",
+      "confidence": 0.45073172450065613
+    },
+    {
+      "start_time": 3.8185,
+      "end_time": 3.8266,
+      "predicted_class": "LABO",
+      "confidence": 0.5736849904060364
+    },
+    {
+      "start_time": 3.9165,
+      "end_time": 3.9237,
+      "predicted_class": "LABO",
+      "confidence": 0.4597926139831543
+    },
+    {
+      "start_time": 4.1165,
+      "end_time": 4.1245,
+      "predicted_class": "LABO",
+      "confidence": 0.48017504811286926
+    },
+    {
+      "start_time": 4.2115,
+      "end_time": 4.219,
+      "predicted_class": "LABO",
+      "confidence": 0.4315621256828308
+    },
+    {
+      "start_time": 4.4125,
+      "end_time": 4.4194,
+      "predicted_class": "LABO",
+      "confidence": 0.35986658930778503
+    },
+    {
+      "start_time": 4.5425,
+      "end_time": 4.5493,
+      "predicted_class": "PESU",
+      "confidence": 0.37677237391471863
+    },
+    {
+      "start_time": 4.7175,
+      "end_time": 4.725,
+      "predicted_class": "LABO",
+      "confidence": 0.3351779878139496
+    },
+    {
+      "start_time": 4.9175,
+      "end_time": 4.9245,
+      "predicted_class": "PESU",
+      "confidence": 0.32004714012145996
+    },
+    {
+      "start_time": 5.1105,
+      "end_time": 5.1177,
+      "predicted_class": "PESU",
+      "confidence": 0.32310745120048523
+    },
+    {
+      "start_time": 7.0965,
+      "end_time": 7.1049,
+      "predicted_class": "PESU",
+      "confidence": 0.2991368770599365
+    },
+    {
+      "start_time": 7.4345,
+      "end_time": 7.4414,
+      "predicted_class": "PESU",
+      "confidence": 0.525288462638855
+    },
+    {
+      "start_time": 8.5285,
+      "end_time": 8.5347,
+      "predicted_class": "PESU",
+      "confidence": 0.49494028091430664
+    },
+    {
+      "start_time": 8.8585,
+      "end_time": 8.8647,
+      "predicted_class": "LABO",
+      "confidence": 0.5770220756530762
+    },
+    {
+      "start_time": 8.9685,
+      "end_time": 8.9782,
+      "predicted_class": "LABO",
+      "confidence": 0.7361054420471191
+    },
+    {
+      "start_time": 9.1835,
+      "end_time": 9.1928,
+      "predicted_class": "LABO",
+      "confidence": 0.7337523698806763
+    },
+    {
+      "start_time": 11.0535,
+      "end_time": 11.0616,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4432854652404785
+    },
+    {
+      "start_time": 11.2475,
+      "end_time": 11.2545,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.7166497111320496
+    },
+    {
+      "start_time": 11.5005,
+      "end_time": 11.5074,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.5801711082458496
+    }
+  ],
+  "2MU01134_20240602_025500.wav": [
+    {
+      "start_time": 0.2745,
+      "end_time": 0.2828,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.34222492575645447
+    },
+    {
+      "start_time": 0.4305,
+      "end_time": 0.4394,
+      "predicted_class": "LACI",
+      "confidence": 0.4234255850315094
+    },
+    {
+      "start_time": 0.5915,
+      "end_time": 0.5992,
+      "predicted_class": "LACI",
+      "confidence": 0.3915894031524658
+    },
+    {
+      "start_time": 0.7455,
+      "end_time": 0.7536,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4618142247200012
+    },
+    {
+      "start_time": 0.8955,
+      "end_time": 0.9032,
+      "predicted_class": "LACI",
+      "confidence": 0.3096925616264343
+    },
+    {
+      "start_time": 1.3595,
+      "end_time": 1.3695,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.48461320996284485
+    },
+    {
+      "start_time": 1.7395,
+      "end_time": 1.7508,
+      "predicted_class": "LACI",
+      "confidence": 0.4210676848888397
+    },
+    {
+      "start_time": 1.9535,
+      "end_time": 1.962,
+      "predicted_class": "LACI",
+      "confidence": 0.47308602929115295
+    },
+    {
+      "start_time": 2.1305,
+      "end_time": 2.1405,
+      "predicted_class": "LACI",
+      "confidence": 0.40255293250083923
+    },
+    {
+      "start_time": 2.3055,
+      "end_time": 2.3142,
+      "predicted_class": "LACI",
+      "confidence": 0.5256669521331787
+    },
+    {
+      "start_time": 2.6205,
+      "end_time": 2.6305,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.6354575157165527
+    },
+    {
+      "start_time": 2.7725,
+      "end_time": 2.7817,
+      "predicted_class": "LACI",
+      "confidence": 0.6087610721588135
+    },
+    {
+      "start_time": 2.9245,
+      "end_time": 2.9321,
+      "predicted_class": "LACI",
+      "confidence": 0.6960166692733765
+    },
+    {
+      "start_time": 4.2335,
+      "end_time": 4.2421,
+      "predicted_class": "PESU",
+      "confidence": 0.32100677490234375
+    },
+    {
+      "start_time": 4.3245,
+      "end_time": 4.3363,
+      "predicted_class": "PESU",
+      "confidence": 0.9884995818138123
+    },
+    {
+      "start_time": 4.4975,
+      "end_time": 4.5069,
+      "predicted_class": "LABO",
+      "confidence": 0.2662726938724518
+    },
+    {
+      "start_time": 5.3975,
+      "end_time": 5.4079,
+      "predicted_class": "PESU",
+      "confidence": 0.989903450012207
+    },
+    {
+      "start_time": 5.6835,
+      "end_time": 5.6951,
+      "predicted_class": "PESU",
+      "confidence": 0.9980104565620422
+    },
+    {
+      "start_time": 5.8685,
+      "end_time": 5.8793,
+      "predicted_class": "PESU",
+      "confidence": 0.9977521300315857
+    },
+    {
+      "start_time": 5.9735,
+      "end_time": 5.9827,
+      "predicted_class": "PESU",
+      "confidence": 0.9923570156097412
+    },
+    {
+      "start_time": 6.1575,
+      "end_time": 6.1659,
+      "predicted_class": "PESU",
+      "confidence": 0.994944155216217
+    },
+    {
+      "start_time": 6.2635,
+      "end_time": 6.2709,
+      "predicted_class": "PESU",
+      "confidence": 0.9713886976242065
+    },
+    {
+      "start_time": 6.3655,
+      "end_time": 6.3751,
+      "predicted_class": "PESU",
+      "confidence": 0.999426007270813
+    },
+    {
+      "start_time": 6.4645,
+      "end_time": 6.4726,
+      "predicted_class": "PESU",
+      "confidence": 0.990088164806366
+    },
+    {
+      "start_time": 6.6625,
+      "end_time": 6.6723,
+      "predicted_class": "PESU",
+      "confidence": 0.9966073036193848
+    },
+    {
+      "start_time": 6.7675,
+      "end_time": 6.7766,
+      "predicted_class": "PESU",
+      "confidence": 0.9002571702003479
+    },
+    {
+      "start_time": 6.9635,
+      "end_time": 6.9723,
+      "predicted_class": "PESU",
+      "confidence": 0.9994524121284485
+    },
+    {
+      "start_time": 7.0715,
+      "end_time": 7.0798,
+      "predicted_class": "PESU",
+      "confidence": 0.9882102012634277
+    },
+    {
+      "start_time": 7.2685,
+      "end_time": 7.2777,
+      "predicted_class": "PESU",
+      "confidence": 0.998933732509613
+    },
+    {
+      "start_time": 7.3785,
+      "end_time": 7.3865,
+      "predicted_class": "PESU",
+      "confidence": 0.9957783222198486
+    },
+    {
+      "start_time": 7.4905,
+      "end_time": 7.5003,
+      "predicted_class": "PESU",
+      "confidence": 0.9956433773040771
+    },
+    {
+      "start_time": 7.6925,
+      "end_time": 7.7014,
+      "predicted_class": "PESU",
+      "confidence": 0.9996172189712524
+    },
+    {
+      "start_time": 7.8075,
+      "end_time": 7.8182,
+      "predicted_class": "PESU",
+      "confidence": 0.9988150596618652
+    },
+    {
+      "start_time": 7.9265,
+      "end_time": 7.935,
+      "predicted_class": "PESU",
+      "confidence": 0.9981763362884521
+    },
+    {
+      "start_time": 8.0405,
+      "end_time": 8.0514,
+      "predicted_class": "PESU",
+      "confidence": 0.9959329962730408
+    },
+    {
+      "start_time": 8.1485,
+      "end_time": 8.1577,
+      "predicted_class": "PESU",
+      "confidence": 0.9996582269668579
+    },
+    {
+      "start_time": 8.2655,
+      "end_time": 8.2775,
+      "predicted_class": "PESU",
+      "confidence": 0.9973053932189941
+    },
+    {
+      "start_time": 8.4725,
+      "end_time": 8.4823,
+      "predicted_class": "PESU",
+      "confidence": 0.9977924823760986
+    },
+    {
+      "start_time": 8.5845,
+      "end_time": 8.595,
+      "predicted_class": "PESU",
+      "confidence": 0.9921047687530518
+    },
+    {
+      "start_time": 8.7085,
+      "end_time": 8.719,
+      "predicted_class": "PESU",
+      "confidence": 0.9970560073852539
+    },
+    {
+      "start_time": 8.9115,
+      "end_time": 8.9214,
+      "predicted_class": "PESU",
+      "confidence": 0.9972125887870789
+    },
+    {
+      "start_time": 9.0225,
+      "end_time": 9.0319,
+      "predicted_class": "PESU",
+      "confidence": 0.9841906428337097
+    },
+    {
+      "start_time": 9.1405,
+      "end_time": 9.1498,
+      "predicted_class": "PESU",
+      "confidence": 0.9865145087242126
+    },
+    {
+      "start_time": 9.3515,
+      "end_time": 9.3611,
+      "predicted_class": "PESU",
+      "confidence": 0.9995334148406982
+    },
+    {
+      "start_time": 9.4785,
+      "end_time": 9.492,
+      "predicted_class": "PESU",
+      "confidence": 0.9795879125595093
+    },
+    {
+      "start_time": 9.6915,
+      "end_time": 9.7011,
+      "predicted_class": "PESU",
+      "confidence": 0.9642707705497742
+    },
+    {
+      "start_time": 9.9165,
+      "end_time": 9.9262,
+      "predicted_class": "PESU",
+      "confidence": 0.7132654190063477
+    },
+    {
+      "start_time": 10.0415,
+      "end_time": 10.0573,
+      "predicted_class": "PESU",
+      "confidence": 0.8746639490127563
+    },
+    {
+      "start_time": 10.2665,
+      "end_time": 10.2773,
+      "predicted_class": "PESU",
+      "confidence": 0.9953792095184326
+    },
+    {
+      "start_time": 10.6275,
+      "end_time": 10.637,
+      "predicted_class": "PESU",
+      "confidence": 0.9939613938331604
+    },
+    {
+      "start_time": 10.7505,
+      "end_time": 10.7595,
+      "predicted_class": "PESU",
+      "confidence": 0.4687812924385071
+    },
+    {
+      "start_time": 10.8035,
+      "end_time": 10.807,
+      "predicted_class": "LABO",
+      "confidence": 0.37719598412513733
+    },
+    {
+      "start_time": 10.9635,
+      "end_time": 10.9748,
+      "predicted_class": "PESU",
+      "confidence": 0.987981379032135
+    },
+    {
+      "start_time": 11.1845,
+      "end_time": 11.1937,
+      "predicted_class": "LABO",
+      "confidence": 0.4846234917640686
+    },
+    {
+      "start_time": 11.2955,
+      "end_time": 11.304,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4089912176132202
+    },
+    {
+      "start_time": 11.3065,
+      "end_time": 11.3167,
+      "predicted_class": "PESU",
+      "confidence": 0.8384020328521729
+    },
+    {
+      "start_time": 11.4385,
+      "end_time": 11.4457,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.2969943881034851
+    },
+    {
+      "start_time": 11.6835,
+      "end_time": 11.6916,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.5349380970001221
+    },
+    {
+      "start_time": 11.8845,
+      "end_time": 11.8908,
+      "predicted_class": "LABO",
+      "confidence": 0.45978298783302307
+    },
+    {
+      "start_time": 11.9495,
+      "end_time": 11.9578,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4992217719554901
+    },
+    {
+      "start_time": 12.0945,
+      "end_time": 12.1022,
+      "predicted_class": "PESU",
+      "confidence": 0.28934165835380554
+    },
+    {
+      "start_time": 12.2395,
+      "end_time": 12.2469,
+      "predicted_class": "LACI",
+      "confidence": 0.3662877082824707
+    },
+    {
+      "start_time": 12.7205,
+      "end_time": 12.7289,
+      "predicted_class": "LACI",
+      "confidence": 0.5743270516395569
+    },
+    {
+      "start_time": 14.0585,
+      "end_time": 14.067,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.3433370292186737
+    },
+    {
+      "start_time": 14.3085,
+      "end_time": 14.3171,
+      "predicted_class": "EPFU_LANO",
+      "confidence": 0.4849507212638855
+    }
+  ],
+  "2MU01134_20240603_035230.wav": [
+    {
+      "start_time": 0.3305,
+      "end_time": 0.3478,
+      "predicted_class": "PESU",
+      "confidence": 0.9567046165466309
+    },
+    {
+      "start_time": 0.6795,
+      "end_time": 0.6916,
+      "predicted_class": "PESU",
+      "confidence": 0.9982768297195435
+    },
+    {
+      "start_time": 0.9065,
+      "end_time": 0.9186,
+      "predicted_class": "PESU",
+      "confidence": 0.9629470109939575
+    },
+    {
+      "start_time": 1.0275,
+      "end_time": 1.0387,
+      "predicted_class": "PESU",
+      "confidence": 0.9914558529853821
+    },
+    {
+      "start_time": 1.6185,
+      "end_time": 1.63,
+      "predicted_class": "PESU",
+      "confidence": 0.9987591505050659
+    },
+    {
+      "start_time": 1.7485,
+      "end_time": 1.7652,
+      "predicted_class": "PESU",
+      "confidence": 0.9902100563049316
+    },
+    {
+      "start_time": 1.9585,
+      "end_time": 1.973,
+      "predicted_class": "PESU",
+      "confidence": 0.9997161030769348
+    },
+    {
+      "start_time": 2.1865,
+      "end_time": 2.2027,
+      "predicted_class": "PESU",
+      "confidence": 0.9534788727760315
+    },
+    {
+      "start_time": 2.4085,
+      "end_time": 2.4189,
+      "predicted_class": "PESU",
+      "confidence": 0.9874247908592224
+    },
+    {
+      "start_time": 2.6405,
+      "end_time": 2.6572,
+      "predicted_class": "PESU",
+      "confidence": 0.9932394027709961
+    },
+    {
+      "start_time": 2.8685,
+      "end_time": 2.8804,
+      "predicted_class": "PESU",
+      "confidence": 0.9981854557991028
+    },
+    {
+      "start_time": 3.1015,
+      "end_time": 3.1151,
+      "predicted_class": "PESU",
+      "confidence": 0.9972684383392334
+    },
+    {
+      "start_time": 3.3255,
+      "end_time": 3.348,
+      "predicted_class": "PESU",
+      "confidence": 0.7584708333015442
+    },
+    {
+      "start_time": 3.6715,
+      "end_time": 3.694,
+      "predicted_class": "LABO",
+      "confidence": 0.3347221910953522
+    },
+    {
+      "start_time": 3.7915,
+      "end_time": 3.8038,
+      "predicted_class": "PESU",
+      "confidence": 0.9996979236602783
+    },
+    {
+      "start_time": 4.0175,
+      "end_time": 4.0308,
+      "predicted_class": "PESU",
+      "confidence": 0.997995138168335
+    },
+    {
+      "start_time": 4.2455,
+      "end_time": 4.2565,
+      "predicted_class": "PESU",
+      "confidence": 0.9918179512023926
+    },
+    {
+      "start_time": 4.3565,
+      "end_time": 4.3652,
+      "predicted_class": "PESU",
+      "confidence": 0.8614416122436523
+    },
+    {
+      "start_time": 4.6875,
+      "end_time": 4.7009,
+      "predicted_class": "PESU",
+      "confidence": 0.9995965361595154
+    },
+    {
+      "start_time": 4.9205,
+      "end_time": 4.9351,
+      "predicted_class": "PESU",
+      "confidence": 0.956739068031311
+    },
+    {
+      "start_time": 6.0535,
+      "end_time": 6.0737,
+      "predicted_class": "PESU",
+      "confidence": 0.8569936752319336
+    },
+    {
+      "start_time": 6.2825,
+      "end_time": 6.2944,
+      "predicted_class": "PESU",
+      "confidence": 0.9639121294021606
+    },
+    {
+      "start_time": 6.4035,
+      "end_time": 6.4156,
+      "predicted_class": "PESU",
+      "confidence": 0.994350254535675
+    },
+    {
+      "start_time": 7.3515,
+      "end_time": 7.3646,
+      "predicted_class": "PESU",
+      "confidence": 0.9878377914428711
+    }
+  ],
+  "2MU01134_20240603_052826.wav": [
+    {
+      "start_time": 0.1135,
+      "end_time": 0.1234,
+      "predicted_class": "PESU",
+      "confidence": 0.9891314506530762
+    },
+    {
+      "start_time": 0.2095,
+      "end_time": 0.2209,
+      "predicted_class": "PESU",
+      "confidence": 0.9248207807540894
+    },
+    {
+      "start_time": 0.3035,
+      "end_time": 0.3127,
+      "predicted_class": "PESU",
+      "confidence": 0.9272237420082092
+    },
+    {
+      "start_time": 0.3895,
+      "end_time": 0.3999,
+      "predicted_class": "PESU",
+      "confidence": 0.9929035305976868
+    },
+    {
+      "start_time": 0.4575,
+      "end_time": 0.4667,
+      "predicted_class": "PESU",
+      "confidence": 0.9883618950843811
+    },
+    {
+      "start_time": 0.5115,
+      "end_time": 0.5189,
+      "predicted_class": "PESU",
+      "confidence": 0.5721734166145325
+    },
+    {
+      "start_time": 0.7725,
+      "end_time": 0.7823,
+      "predicted_class": "PESU",
+      "confidence": 0.9965853691101074
+    },
+    {
+      "start_time": 0.8635,
+      "end_time": 0.8729,
+      "predicted_class": "PESU",
+      "confidence": 0.9119209051132202
+    },
+    {
+      "start_time": 0.9635,
+      "end_time": 0.977,
+      "predicted_class": "PESU",
+      "confidence": 0.998102605342865
+    },
+    {
+      "start_time": 1.0635,
+      "end_time": 1.0738,
+      "predicted_class": "PESU",
+      "confidence": 0.997323751449585
+    },
+    {
+      "start_time": 1.1645,
+      "end_time": 1.1769,
+      "predicted_class": "PESU",
+      "confidence": 0.997481644153595
+    },
+    {
+      "start_time": 1.2715,
+      "end_time": 1.2855,
+      "predicted_class": "PESU",
+      "confidence": 0.999450147151947
+    },
+    {
+      "start_time": 1.3765,
+      "end_time": 1.3884,
+      "predicted_class": "PESU",
+      "confidence": 0.9995438456535339
+    },
+    {
+      "start_time": 1.4785,
+      "end_time": 1.4892,
+      "predicted_class": "PESU",
+      "confidence": 0.9937625527381897
+    },
+    {
+      "start_time": 1.5885,
+      "end_time": 1.6003,
+      "predicted_class": "PESU",
+      "confidence": 0.9997324347496033
+    },
+    {
+      "start_time": 1.7035,
+      "end_time": 1.7144,
+      "predicted_class": "PESU",
+      "confidence": 0.9926565289497375
+    },
+    {
+      "start_time": 1.8195,
+      "end_time": 1.8312,
+      "predicted_class": "PESU",
+      "confidence": 0.992699921131134
+    },
+    {
+      "start_time": 1.9355,
+      "end_time": 1.947,
+      "predicted_class": "PESU",
+      "confidence": 0.9843268990516663
+    },
+    {
+      "start_time": 2.0485,
+      "end_time": 2.0591,
+      "predicted_class": "PESU",
+      "confidence": 0.9970834851264954
+    },
+    {
+      "start_time": 2.1655,
+      "end_time": 2.1767,
+      "predicted_class": "PESU",
+      "confidence": 0.997453510761261
+    },
+    {
+      "start_time": 2.2785,
+      "end_time": 2.2894,
+      "predicted_class": "PESU",
+      "confidence": 0.9972741007804871
+    },
+    {
+      "start_time": 2.9945,
+      "end_time": 3.0094,
+      "predicted_class": "PESU",
+      "confidence": 0.996224045753479
+    },
+    {
+      "start_time": 4.6645,
+      "end_time": 4.6762,
+      "predicted_class": "PESU",
+      "confidence": 0.9974811673164368
+    }
+  ]
+}
