@@ -7,10 +7,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Build context is repo root (see docker-compose.yml build.context).
+COPY edge/analysis-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
+COPY edge/analysis-api/src/ ./src/
+COPY docker/models/groups_model.pt /app/models/groups_model.pt
 
 EXPOSE 8080
 

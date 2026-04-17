@@ -6,7 +6,17 @@ import firebase_admin
 import psycopg2
 from firebase_admin import credentials, firestore
 
+from src import onedrive_sync
+from src.disk_watchdog import enforce_disk_quota, get_audio_disk_stats
 from src.health import collect_all_metrics
+
+# Module-level state so sync_device_status can surface last OneDrive
+# attempt without another round-trip of subprocess / DB calls.
+_onedrive_state = {
+    "last_run_ts": 0.0,
+    "last_action": None,
+    "rclone_available": None,
+}
 
 
 def init_firebase():
@@ -85,13 +95,25 @@ def sync_classifications(conn, db):
 
 
 def sync_bat_detections(conn, db):
-    """Sync unsynced bat detection records to Firestore."""
+    """Sync unsynced bat detection records to Firestore.
+
+    Mirrors every column — legacy (species, detection_prob…) plus the
+    groups-classifier, review, environmental, and tiering columns added
+    in Stage A. Most of the new fields will be NULL until their writers
+    ship in later stages, but we mirror them now so the dashboard can
+    start consuming them without another sync-service change.
+    """
     with conn.cursor() as cur:
         cur.execute("""
             SELECT id, species, common_name, detection_prob,
                    start_time, end_time, low_freq, high_freq,
                    duration_ms, device, sync_id, detection_time,
-                   COALESCE(source, 'live') AS source
+                   COALESCE(source, 'live') AS source,
+                   predicted_class, prediction_confidence, model_version,
+                   reviewed_by, reviewed_at, verified_class, reviewer_notes,
+                   temperature_c, temperature_timestamp, alignment_error_ms,
+                   storage_tier, expires_at,
+                   remote_audio_path, synced_remote_at
             FROM bat_detections
             WHERE synced = FALSE
             ORDER BY detection_time ASC
@@ -120,6 +142,20 @@ def sync_bat_detections(conn, db):
             "syncId": row[10],
             "detectionTime": row[11],
             "source": row[12],
+            "predictedClass": row[13],
+            "predictionConfidence": row[14],
+            "modelVersion": row[15],
+            "reviewedBy": row[16],
+            "reviewedAt": row[17],
+            "verifiedClass": row[18],
+            "reviewerNotes": row[19],
+            "temperatureC": row[20],
+            "temperatureTimestamp": row[21],
+            "alignmentErrorMs": row[22],
+            "storageTier": row[23],
+            "expiresAt": row[24],
+            "remoteAudioPath": row[25],
+            "syncedRemoteAt": row[26],
             "createdAt": firestore.SERVER_TIMESTAMP,
         })
         ids_to_mark.append(row[0])
@@ -256,6 +292,39 @@ def run_migrations(conn):
                 END IF;
             END $$;
         """)
+        # Groups-classifier head + flywheel columns on bat_detections.
+        # Additive only — legacy rows keep NULL and the existing `species`
+        # column stays the source of truth until the dashboard cuts over.
+        cur.execute("""
+            ALTER TABLE bat_detections
+                ADD COLUMN IF NOT EXISTS predicted_class       VARCHAR(32),
+                ADD COLUMN IF NOT EXISTS prediction_confidence REAL,
+                ADD COLUMN IF NOT EXISTS model_version         VARCHAR(64),
+                ADD COLUMN IF NOT EXISTS reviewed_by           VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS reviewed_at           TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS verified_class        VARCHAR(32),
+                ADD COLUMN IF NOT EXISTS reviewer_notes        TEXT,
+                ADD COLUMN IF NOT EXISTS temperature_c         REAL,
+                ADD COLUMN IF NOT EXISTS temperature_timestamp TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS alignment_error_ms    REAL,
+                ADD COLUMN IF NOT EXISTS storage_tier          SMALLINT,
+                ADD COLUMN IF NOT EXISTS expires_at            TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS remote_audio_path     VARCHAR(512),
+                ADD COLUMN IF NOT EXISTS synced_remote_at      TIMESTAMP
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bat_predicted_class
+            ON bat_detections(predicted_class)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bat_storage_tier
+            ON bat_detections(storage_tier)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bat_unverified
+            ON bat_detections(verified_class)
+            WHERE verified_class IS NULL
+        """)
         # Environmental readings table (HOBO MX2201 BLE sensor)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS environmental_readings (
@@ -332,6 +401,7 @@ def sync_device_status(conn, db):
 
         # ── Build the payload once and reuse it ──
         sample_rate = int(os.getenv("SAMPLE_RATE", "250000"))
+        bat_audio_dir = os.getenv("BAT_AUDIO_DIR", "/bat_audio")
         payload = {
             "uptimeSeconds": metrics["uptime_seconds"],
             "cpuTemp": metrics["cpu_temp"],
@@ -352,6 +422,13 @@ def sync_device_status(conn, db):
             "unsyncedCount": metrics["unsynced_count"],
             "sampleRateHz": sample_rate,
             "recordedAt": firestore.SERVER_TIMESTAMP,
+            **get_audio_disk_stats(bat_audio_dir),
+            "rcloneAvailable": _onedrive_state["rclone_available"],
+            "lastOnedriveSyncAt": (
+                datetime.fromtimestamp(_onedrive_state["last_run_ts"], tz=timezone.utc)
+                if _onedrive_state["last_run_ts"] else None
+            ),
+            "lastOnedriveSyncAction": _onedrive_state["last_action"],
         }
 
         # ── Detect offline gap ──
@@ -507,6 +584,19 @@ def cleanup_old_data(conn):
 def main():
     sync_interval = int(os.getenv("SYNC_INTERVAL", "60"))
 
+    enable_onedrive = os.getenv("ENABLE_ONEDRIVE_SYNC", "false").lower() == "true"
+    onedrive_interval_sec = int(os.getenv("ONEDRIVE_SYNC_INTERVAL_MINUTES", "60")) * 60
+    onedrive_cfg = None
+    if enable_onedrive:
+        onedrive_cfg = onedrive_sync.config_from_env()
+        onedrive_cfg["_enabled"] = True
+        print(f"[SYNC] OneDrive archival enabled "
+              f"(remote={onedrive_cfg['rclone_remote_name']}:"
+              f"{onedrive_cfg['remote_base_path']}, "
+              f"interval={onedrive_interval_sec}s)")
+    else:
+        print("[SYNC] OneDrive archival disabled (ENABLE_ONEDRIVE_SYNC=false)")
+
     print("[SYNC] Initializing Firebase...")
     db = init_firebase()
     print("[SYNC] Firebase connected")
@@ -531,6 +621,38 @@ def main():
             env_count = sync_environmental_readings(conn, db)
             audio_count = upload_bat_audio(conn, db)
             sync_device_status(conn, db)
+
+            # Reclaim disk if the bat_audio store crossed the hard cap, or
+            # flip/release the halt flag based on current usage.
+            bat_audio_dir = os.getenv("BAT_AUDIO_DIR", "/bat_audio")
+            watchdog = enforce_disk_quota(conn, bat_audio_dir)
+            if watchdog["action"] != "none":
+                print(
+                    f"[SYNC] Watchdog: {watchdog['action']} "
+                    f"used={watchdog.get('used_gb')} GB "
+                    f"deleted={watchdog.get('files_deleted', 0)} "
+                    f"freed={watchdog.get('gb_freed', 0)} GB "
+                    f"halt={watchdog.get('halt_recordings', False)}"
+                )
+
+            # OneDrive archival runs on its own (slower) cadence — uploads
+            # are network-bound, so don't tie them to the 60s sync interval.
+            now_ts = time.time()
+            if enable_onedrive and (now_ts - _onedrive_state["last_run_ts"]) >= onedrive_interval_sec:
+                result = onedrive_sync.sync_tier1_to_onedrive(conn, onedrive_cfg)
+                _onedrive_state["last_run_ts"] = now_ts
+                _onedrive_state["last_action"] = result["action"]
+                _onedrive_state["rclone_available"] = result["action"] != "error"
+                print(
+                    f"[SYNC] OneDrive: {result['action']} "
+                    f"candidates={result['candidates_found']} "
+                    f"ok={result['uploads_succeeded']} "
+                    f"failed={result['uploads_failed']} "
+                    f"bytes={result['bytes_uploaded']}"
+                )
+                if result["errors"]:
+                    for err in result["errors"][:5]:
+                        print(f"[SYNC]   err: {err.get('file')} -> {err.get('error')}")
 
             now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
             print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, {env_count} env, health ok ({now_str})")

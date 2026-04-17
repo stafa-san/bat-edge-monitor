@@ -59,6 +59,25 @@ app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 _ast_classifier = None
 _bat_config = None
+_groups_classifier = None  # (model, ckpt) tuple when loaded
+
+ENABLE_GROUPS_CLASSIFIER = os.getenv("ENABLE_GROUPS_CLASSIFIER", "false").lower() == "true"
+GROUPS_MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/groups_model.pt")
+GROUPS_MODEL_VERSION = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-17")
+CLASSIFIER_DET_THRESHOLD = 0.5  # Matches training filter
+
+
+def get_groups_classifier():
+    """Lazy-load the groups classifier on first use."""
+    global _groups_classifier
+    if _groups_classifier is None:
+        from src.classifier import load_groups_classifier
+
+        print(f"[ANALYSIS] Loading groups classifier from {GROUPS_MODEL_PATH}")
+        model, ckpt = load_groups_classifier(GROUPS_MODEL_PATH)
+        _groups_classifier = (model, ckpt)
+        print(f"[ANALYSIS] Classifier ready: {ckpt['class_names']}")
+    return _groups_classifier
 
 
 def get_ast_classifier():
@@ -171,21 +190,49 @@ def _safe_spl(audio: np.ndarray, gain: float = 25, sensitivity: float = -18) -> 
 # ---------------------------------------------------------------------------
 
 def run_batdetect(wav_path: str):
-    """Run BatDetect2 on the wav file, return list of detection dicts."""
+    """Run BatDetect2 on the wav file, return list of detection dicts.
+
+    When ENABLE_GROUPS_CLASSIFIER is on, we also run the groups classifier
+    head over the 32-dim features BatDetect2 emits, and attach
+    `predicted_class` + `prediction_confidence` to each detection.
+    Raw `species` (UK BatDetect2 label) is always included for legacy
+    compatibility and thesis comparison.
+    """
     from batdetect2 import api as bat_api
 
-    config = get_bat_config()
-    results = bat_api.process_file(wav_path, config=config)
+    if ENABLE_GROUPS_CLASSIFIER:
+        # process_audio gives us features; classify above det_prob > 0.5
+        audio = bat_api.load_audio(wav_path)
+        detections, features, _ = bat_api.process_audio(audio)
 
-    pred_dict = results.get("pred_dict", {})
-    detections = pred_dict.get("annotation", [])
+        if not detections:
+            return []
+
+        mask = np.array([d.get("det_prob", 0.0) > CLASSIFIER_DET_THRESHOLD for d in detections])
+        if not mask.any():
+            return []
+
+        high_conf_dets = [d for d, m in zip(detections, mask) if m]
+        high_conf_feats = features[mask]
+
+        from src.classifier import classify
+        model, ckpt = get_groups_classifier()
+        preds = classify(high_conf_feats, model, ckpt)
+        pairs = list(zip(high_conf_dets, preds))
+    else:
+        # Legacy path — raw BatDetect2 only
+        config = get_bat_config()
+        results = bat_api.process_file(wav_path, config=config)
+        pred_dict = results.get("pred_dict", {})
+        detections = pred_dict.get("annotation", [])
+        pairs = [(d, None) for d in detections]
 
     out = []
-    for det in detections:
+    for det, pred in pairs:
         species = det.get("class", "Unknown")
         start = det.get("start_time", 0.0)
         end = det.get("end_time", 0.0)
-        out.append({
+        row = {
             "species": species,
             "common_name": species,
             "detection_prob": round(det.get("det_prob", 0.0), 4),
@@ -194,7 +241,11 @@ def run_batdetect(wav_path: str):
             "low_freq": round(det.get("low_freq", 0.0), 1),
             "high_freq": round(det.get("high_freq", 0.0), 1),
             "duration_ms": round((end - start) * 1000, 1),
-        })
+            "predicted_class": pred["predicted_class"] if pred else None,
+            "prediction_confidence": round(pred["prediction_confidence"], 4) if pred else None,
+            "model_version": GROUPS_MODEL_VERSION if pred else None,
+        }
+        out.append(row)
     return out
 
 
@@ -289,6 +340,9 @@ async def analyze(
                         d["start_time"], d["end_time"], d["low_freq"],
                         d["high_freq"], d["duration_ms"],
                         device_label, sync_id, now, "upload",
+                        d.get("predicted_class"),
+                        d.get("prediction_confidence"),
+                        d.get("model_version"),
                     )
                     for d in bat_results
                 ]
@@ -297,7 +351,8 @@ async def analyze(
                         INSERT INTO bat_detections
                             (species, common_name, detection_prob, start_time,
                              end_time, low_freq, high_freq, duration_ms,
-                             device, sync_id, detection_time, source)
+                             device, sync_id, detection_time, source,
+                             predicted_class, prediction_confidence, model_version)
                         VALUES %s
                     """, rows)
                 conn.commit()

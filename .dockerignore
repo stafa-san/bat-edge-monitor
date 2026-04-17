@@ -1,0 +1,37 @@
+# Build context is the repo root for edge services (see edge/docker-compose.yml).
+# Exclude everything not needed for the Pi images so the build context stays small.
+
+.git/
+.github/
+.vscode/
+.idea/
+
+# Dashboard (Vercel) — not shipped to Pi
+dashboard/
+
+# Training artifacts — we only need docker/models/; skip the training scripts,
+# logs, predictions, and the pre-Epfu baseline that are kept in the repo for
+# reference but aren't part of the Pi runtime.
+Docs/
+docker/scripts/
+docker/README.md
+docker/Dockerfile
+
+# Dev / OS
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/node_modules/
+**/.next/
+**/.DS_Store
+*.log
+
+# Secrets (defense in depth — .gitignore already covers these)
+**/.env
+**/.env.local
+**/.env.production
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
