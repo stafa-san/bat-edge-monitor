@@ -8,9 +8,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Build context is repo root (see docker-compose.yml build.context).
+COPY edge/batdetect-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
+COPY edge/batdetect-service/src/ ./src/
+COPY docker/models/groups_model.pt /app/models/groups_model.pt
 
 CMD ["python", "-m", "src.main"]

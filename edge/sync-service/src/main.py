@@ -85,13 +85,25 @@ def sync_classifications(conn, db):
 
 
 def sync_bat_detections(conn, db):
-    """Sync unsynced bat detection records to Firestore."""
+    """Sync unsynced bat detection records to Firestore.
+
+    Mirrors every column — legacy (species, detection_prob…) plus the
+    groups-classifier, review, environmental, and tiering columns added
+    in Stage A. Most of the new fields will be NULL until their writers
+    ship in later stages, but we mirror them now so the dashboard can
+    start consuming them without another sync-service change.
+    """
     with conn.cursor() as cur:
         cur.execute("""
             SELECT id, species, common_name, detection_prob,
                    start_time, end_time, low_freq, high_freq,
                    duration_ms, device, sync_id, detection_time,
-                   COALESCE(source, 'live') AS source
+                   COALESCE(source, 'live') AS source,
+                   predicted_class, prediction_confidence, model_version,
+                   reviewed_by, reviewed_at, verified_class, reviewer_notes,
+                   temperature_c, temperature_timestamp, alignment_error_ms,
+                   storage_tier, expires_at,
+                   remote_audio_path, synced_remote_at
             FROM bat_detections
             WHERE synced = FALSE
             ORDER BY detection_time ASC
@@ -120,6 +132,20 @@ def sync_bat_detections(conn, db):
             "syncId": row[10],
             "detectionTime": row[11],
             "source": row[12],
+            "predictedClass": row[13],
+            "predictionConfidence": row[14],
+            "modelVersion": row[15],
+            "reviewedBy": row[16],
+            "reviewedAt": row[17],
+            "verifiedClass": row[18],
+            "reviewerNotes": row[19],
+            "temperatureC": row[20],
+            "temperatureTimestamp": row[21],
+            "alignmentErrorMs": row[22],
+            "storageTier": row[23],
+            "expiresAt": row[24],
+            "remoteAudioPath": row[25],
+            "syncedRemoteAt": row[26],
             "createdAt": firestore.SERVER_TIMESTAMP,
         })
         ids_to_mark.append(row[0])

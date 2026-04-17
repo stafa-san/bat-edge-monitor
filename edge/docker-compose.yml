@@ -11,7 +11,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      - SAMPLE_RATE=250000
+      - SAMPLE_RATE=192000
     volumes:
       - audio_lock:/locks
     depends_on:
@@ -20,7 +20,9 @@ services:
     restart: unless-stopped
 
   batdetect-service:
-    build: ./batdetect-service
+    build:
+      context: ..
+      dockerfile: edge/batdetect-service/Dockerfile
     devices:
       - /dev/snd:/dev/snd
     privileged: true
@@ -31,9 +33,12 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      - SAMPLE_RATE=250000
+      - SAMPLE_RATE=192000
       - DETECTION_THRESHOLD=0.3
       - UPLOAD_BAT_AUDIO=false
+      - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
+      - MODEL_PATH=/app/models/groups_model.pt
+      - MODEL_VERSION=${MODEL_VERSION:-groups_v1_post_epfu_partial_2026-04-17}
     volumes:
       - audio_lock:/locks
       - bat_audio:/bat_audio
@@ -51,7 +56,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - SYNC_INTERVAL=60
-      - SAMPLE_RATE=250000
+      - SAMPLE_RATE=192000
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_STORAGE_BUCKET=bat-edge-monitor.firebasestorage.app
       - UPLOAD_BAT_AUDIO=false
@@ -104,7 +109,9 @@ services:
     restart: unless-stopped
 
   analysis-api:
-    build: ./analysis-api
+    build:
+      context: ..
+      dockerfile: edge/analysis-api/Dockerfile
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=db
@@ -112,6 +119,9 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DETECTION_THRESHOLD=0.3
+      - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
+      - MODEL_PATH=/app/models/groups_model.pt
+      - MODEL_VERSION=${MODEL_VERSION:-groups_v1_post_epfu_partial_2026-04-17}
     ports:
       - "8080:8080"
     depends_on:
