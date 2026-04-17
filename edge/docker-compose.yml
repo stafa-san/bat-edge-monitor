@@ -67,6 +67,12 @@ services:
       - DISK_WARNING_GB=${DISK_WARNING_GB:-170}
       - DISK_HARD_CAP_GB=${DISK_HARD_CAP_GB:-180}
       - DISK_TARGET_FREE_GB=${DISK_TARGET_FREE_GB:-50}
+      - PI_SITE=${PI_SITE:-pi01}
+      - ENABLE_ONEDRIVE_SYNC=${ENABLE_ONEDRIVE_SYNC:-false}
+      - ONEDRIVE_REMOTE_NAME=${ONEDRIVE_REMOTE_NAME:-onedrive}
+      - ONEDRIVE_REMOTE_BASE_PATH=${ONEDRIVE_REMOTE_BASE_PATH:-Bat Recordings from pi01}
+      - ONEDRIVE_SYNC_INTERVAL_MINUTES=${ONEDRIVE_SYNC_INTERVAL_MINUTES:-60}
+      - ONEDRIVE_MAX_FILES_PER_BATCH=${ONEDRIVE_MAX_FILES_PER_BATCH:-50}
     volumes:
       - ./sync-service/serviceAccountKey.json:/app/serviceAccountKey.json:ro
       - /proc/uptime:/host/uptime:ro
@@ -75,6 +81,10 @@ services:
       - /sys/class/thermal/thermal_zone0/temp:/host/cpu_temp:ro
       - bat_audio:/bat_audio
       - control_flags:/control
+      # rclone OAuth config from the host. Mounted read-only so the
+      # container can never modify the tokens. Set up once per Pi via
+      # edge/scripts/setup_rclone_onedrive.sh.
+      - /home/pi/.config/rclone:/root/.config/rclone:ro
     depends_on:
       db:
         condition: service_healthy

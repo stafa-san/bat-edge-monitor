@@ -6,8 +6,17 @@ import firebase_admin
 import psycopg2
 from firebase_admin import credentials, firestore
 
+from src import onedrive_sync
 from src.disk_watchdog import enforce_disk_quota, get_audio_disk_stats
 from src.health import collect_all_metrics
+
+# Module-level state so sync_device_status can surface last OneDrive
+# attempt without another round-trip of subprocess / DB calls.
+_onedrive_state = {
+    "last_run_ts": 0.0,
+    "last_action": None,
+    "rclone_available": None,
+}
 
 
 def init_firebase():
@@ -414,6 +423,12 @@ def sync_device_status(conn, db):
             "sampleRateHz": sample_rate,
             "recordedAt": firestore.SERVER_TIMESTAMP,
             **get_audio_disk_stats(bat_audio_dir),
+            "rcloneAvailable": _onedrive_state["rclone_available"],
+            "lastOnedriveSyncAt": (
+                datetime.fromtimestamp(_onedrive_state["last_run_ts"], tz=timezone.utc)
+                if _onedrive_state["last_run_ts"] else None
+            ),
+            "lastOnedriveSyncAction": _onedrive_state["last_action"],
         }
 
         # ── Detect offline gap ──
@@ -569,6 +584,19 @@ def cleanup_old_data(conn):
 def main():
     sync_interval = int(os.getenv("SYNC_INTERVAL", "60"))
 
+    enable_onedrive = os.getenv("ENABLE_ONEDRIVE_SYNC", "false").lower() == "true"
+    onedrive_interval_sec = int(os.getenv("ONEDRIVE_SYNC_INTERVAL_MINUTES", "60")) * 60
+    onedrive_cfg = None
+    if enable_onedrive:
+        onedrive_cfg = onedrive_sync.config_from_env()
+        onedrive_cfg["_enabled"] = True
+        print(f"[SYNC] OneDrive archival enabled "
+              f"(remote={onedrive_cfg['rclone_remote_name']}:"
+              f"{onedrive_cfg['remote_base_path']}, "
+              f"interval={onedrive_interval_sec}s)")
+    else:
+        print("[SYNC] OneDrive archival disabled (ENABLE_ONEDRIVE_SYNC=false)")
+
     print("[SYNC] Initializing Firebase...")
     db = init_firebase()
     print("[SYNC] Firebase connected")
@@ -606,6 +634,25 @@ def main():
                     f"freed={watchdog.get('gb_freed', 0)} GB "
                     f"halt={watchdog.get('halt_recordings', False)}"
                 )
+
+            # OneDrive archival runs on its own (slower) cadence — uploads
+            # are network-bound, so don't tie them to the 60s sync interval.
+            now_ts = time.time()
+            if enable_onedrive and (now_ts - _onedrive_state["last_run_ts"]) >= onedrive_interval_sec:
+                result = onedrive_sync.sync_tier1_to_onedrive(conn, onedrive_cfg)
+                _onedrive_state["last_run_ts"] = now_ts
+                _onedrive_state["last_action"] = result["action"]
+                _onedrive_state["rclone_available"] = result["action"] != "error"
+                print(
+                    f"[SYNC] OneDrive: {result['action']} "
+                    f"candidates={result['candidates_found']} "
+                    f"ok={result['uploads_succeeded']} "
+                    f"failed={result['uploads_failed']} "
+                    f"bytes={result['bytes_uploaded']}"
+                )
+                if result["errors"]:
+                    for err in result["errors"][:5]:
+                        print(f"[SYNC]   err: {err.get('file')} -> {err.get('error')}")
 
             now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
             print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, {env_count} env, health ok ({now_str})")

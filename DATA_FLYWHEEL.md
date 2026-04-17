@@ -48,22 +48,42 @@ The thresholds below are the **defaults shipped in `edge/batdetect-service/src/s
 - Kept 7 days for manual review, then reclaimed by the disk watchdog
 - NOTE: the "no detections at all" case from earlier drafts of this doc is **not** archived today — the Pi service only runs tiering when BatDetect2 returns detections. Adding an "entirely silent segment" capture would require a schema change to allow detection-less rows. Out of scope for Stage D1.
 
-## Storage options
+## Storage landing spots (what actually ships)
 
-| Option | Cost | Capacity | Ease |
-|--------|------|----------|------|
-| Local microSD on Pi | Free | Limited (256 GB) | Easy |
-| External USB drive | ~$100 | 1-4 TB | Easy |
-| Firebase Storage | ~$0.026/GB/month | Unlimited | Medium |
-| Google Drive (shared with advisor) | $10/month for 2TB | 2 TB | Medium |
-| UC research storage (Box, OneDrive) | Free | Varies | Check IT |
-| Self-hosted S3 (minio on a NAS) | Hardware cost | Unlimited | Hard |
+| Tier | Destination | How it gets there | Retention |
+|------|-------------|-------------------|-----------|
+| 1 | **UC OneDrive** (`Bat Recordings from <PI_SITE>/...`) | `sync-service` → `rclone copyto` on an interval (default 60 min) | Forever; local copy reclaimed by watchdog after upload |
+| 2 | Pi SD card, `/bat_audio/tier2_30day/` | batdetect-service on capture | 30 days; watchdog may pre-empt under disk pressure |
+| 3 | Metadata only, no WAV written | n/a | n/a |
+| 4 | Pi SD card, `/bat_audio/tier4_anomaly/` | batdetect-service on capture | 7 days; watchdog reclaims |
 
-**My recommendation for a grad-student budget:**
-- Tier 1 (forever) → Firebase Storage (small amount, cheap)
-- Tier 2 (30 days) → Local USB drive on Pi
-- Tier 3/4 → Local, ephemeral
-- Also: weekly rsync the USB drive to your UC OneDrive or home NAS
+Why OneDrive and not Firebase Storage:
+
+- Mustapha's UC account (`zakarimn@mail.uc.edu`) gets 1-5 TB of OneDrive free. Firebase Storage is $0.026/GB/month and would bloat fast at 192 kHz audio (~1.4 GB per recorded hour).
+- Dr. Johnson already uses OneDrive to share data with Mustapha (the "Calls for Mustapha" folder). The review workflow matches how he already works.
+- UC data retention policies back up OneDrive automatically.
+
+A future external USB drive on the Pi is still on the wishlist for tier 2 overflow — noted in the architecture but not yet required. Tier 2 retention is short, so the SD card is fine for now.
+
+## One-time Pi setup
+
+OneDrive requires an OAuth token that only you can generate (no automation possible). Run [`edge/scripts/setup_rclone_onedrive.sh`](edge/scripts/setup_rclone_onedrive.sh) on the Pi:
+
+```bash
+bash edge/scripts/setup_rclone_onedrive.sh
+```
+
+It's an interactive cheat sheet that walks through 7 steps: install rclone on the host, run `rclone config`, authenticate with `zakarimn@mail.uc.edu`, smoke-test with `rclone lsd onedrive:`, lock down the config file, restart `sync-service`, and flip `ENABLE_ONEDRIVE_SYNC=true` in `edge/.env`.
+
+The `sync-service` container ships with the rclone binary baked in (~40 MB) so no install inside the container is needed — just the OAuth config, which is bind-mounted read-only from `/home/pi/.config/rclone`.
+
+After activation, `sync-service` logs a line per OneDrive cycle:
+
+```
+[SYNC] OneDrive: synced candidates=3 ok=3 failed=0 bytes=18441422
+```
+
+Re-running is safe: if a previous attempt uploaded the file but failed to update the DB, rclone's `lsjson` check detects it and the row backfills without a re-upload.
 
 ## Database schema addition
 
@@ -231,12 +251,12 @@ Your dashboard at `bat-edge-monitor-dashboard.vercel.app` is a good place to add
 ## Cost estimates
 
 Assuming 10 bat calls/hour average, 8 hours/night, 6 months/year = 14,400 calls/year:
-- Tier 1 (10% rare): 1,440 recordings × 1MB = 1.4 GB forever = ~$0.04/month in Firebase
-- Tier 2 (50%): 7,200 × 1MB × 30 days rolling = ~7 GB rolling = local storage only
-- Tier 3 (40%): metadata only, negligible storage
-- Tier 4 (~1% anomalies): ~150 × 1MB × 7 days = negligible
+- Tier 1 (10% rare): 1,440 recordings × 1MB = 1.4 GB forever → **UC OneDrive, $0**
+- Tier 2 (50%): 7,200 × 1MB × 30 days rolling = ~7 GB rolling → Pi SD card, $0
+- Tier 3 (40%): metadata only, negligible storage → Postgres on Pi, $0
+- Tier 4 (~1% anomalies): ~150 × 1MB × 7 days = negligible → Pi SD card, $0
 
-**Total cloud cost: <$1/month.** Plus a $100 external drive once.
+**Total cloud cost: $0** for the field deployment (UC OneDrive is included with Mustapha's student account). External USB drive is optional if tier 2 growth ever outpaces the SD card — not required today.
 
 ## Tuning the thresholds
 

@@ -32,6 +32,7 @@ sys.path.insert(0, str(WATCHDOG_SRC))
 
 import storage  # noqa: E402
 import disk_watchdog  # noqa: E402
+import onedrive_sync  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
@@ -553,6 +554,351 @@ def test_stage_sql_excludes_verified():
 
 
 # -----------------------------------------------------------------------------
+# OneDrive sync — path building
+# -----------------------------------------------------------------------------
+
+def test_build_remote_path_strips_bat_audio_prefix():
+    out = onedrive_sync._build_remote_path(
+        "/bat_audio/tier1_permanent/PESU/pi01_20260417T143022Z.wav",
+        "pi01", "Bat Recordings from pi01",
+    )
+    assert out == "Bat Recordings from pi01/tier1_permanent/PESU/pi01_20260417T143022Z.wav"
+
+
+def test_build_remote_path_preserves_class_folder():
+    out = onedrive_sync._build_remote_path(
+        "/bat_audio/tier1_permanent/LACI/pi02_20260501T000000Z.wav",
+        "pi02", "Bat Recordings from pi02",
+    )
+    assert "/LACI/" in out
+    assert out.endswith("pi02_20260501T000000Z.wav")
+
+
+def test_build_remote_path_rejects_paths_outside_bat_audio():
+    try:
+        onedrive_sync._build_remote_path(
+            "/somewhere/else/file.wav", "pi01", "Bat Recordings from pi01",
+        )
+    except ValueError:
+        return
+    raise AssertionError("should reject paths outside /bat_audio/")
+
+
+def test_build_remote_path_strips_trailing_slash_on_base():
+    out = onedrive_sync._build_remote_path(
+        "/bat_audio/tier1_permanent/MYSP/x.wav",
+        "pi01", "Bat Recordings from pi01/",
+    )
+    assert "//" not in out
+
+
+# -----------------------------------------------------------------------------
+# OneDrive sync — SQL assertions (matches disk_watchdog style)
+# -----------------------------------------------------------------------------
+
+def test_find_candidates_sql_orders_oldest_first():
+    assert "ORDER BY detection_time ASC" in onedrive_sync._CANDIDATE_SQL
+
+
+def test_find_candidates_sql_excludes_already_synced():
+    assert "remote_audio_path IS NULL" in onedrive_sync._CANDIDATE_SQL
+
+
+def test_find_candidates_sql_requires_tier_1():
+    assert "storage_tier = 1" in onedrive_sync._CANDIDATE_SQL
+
+
+def test_find_candidates_sql_respects_limit():
+    assert "LIMIT %s" in onedrive_sync._CANDIDATE_SQL
+
+
+def test_find_candidates_sql_requires_audio_on_disk():
+    """If local audio is already gone we can't upload anything."""
+    assert "audio_path IS NOT NULL" in onedrive_sync._CANDIDATE_SQL
+
+
+# -----------------------------------------------------------------------------
+# OneDrive sync — FakeRclone end-to-end via _run_rclone seam
+# -----------------------------------------------------------------------------
+
+class _FakeRclone:
+    """Stand-in for onedrive_sync._run_rclone; records every invocation."""
+
+    def __init__(self):
+        self.calls: List[dict] = []
+        self.version_ok = True
+        self.existing_targets: set = set()
+        self.copyto_succeeds = True
+        self.copyto_stderr = b""
+
+    def __call__(self, args, timeout):
+        self.calls.append({"args": list(args), "timeout": timeout})
+        sub = args[1] if len(args) > 1 else ""
+        if sub == "version":
+            return {
+                "returncode": 0 if self.version_ok else 127,
+                "stdout": b"rclone v1.69.0" if self.version_ok else b"",
+                "stderr": b"" if self.version_ok else b"command not found",
+            }
+        if sub == "lsjson":
+            target = args[-1]
+            if target in self.existing_targets:
+                return {"returncode": 0, "stdout": b'[{"Name":"x"}]', "stderr": b""}
+            return {"returncode": 0, "stdout": b"[]", "stderr": b""}
+        if sub == "copyto":
+            return {
+                "returncode": 0 if self.copyto_succeeds else 1,
+                "stdout": b"",
+                "stderr": self.copyto_stderr,
+            }
+        return {"returncode": 1, "stdout": b"", "stderr": b"unknown rclone command"}
+
+
+class _OnedriveMockConn:
+    def __init__(self, candidates=None):
+        self.candidates = list(candidates or [])
+        self.marked_synced: List[dict] = []
+
+    def cursor(self):
+        return _OnedriveMockCursor(self)
+
+    def commit(self):
+        pass
+
+
+class _OnedriveMockCursor:
+    def __init__(self, conn):
+        self.conn = conn
+        self._rows = []
+
+    def execute(self, sql, params=None):
+        if "SELECT id, audio_path, detection_time" in sql:
+            limit = (params or (50,))[0]
+            self._rows = self.conn.candidates[:limit]
+        elif "UPDATE bat_detections" in sql and "remote_audio_path" in sql:
+            remote_path, row_id = params
+            self.conn.marked_synced.append({"id": row_id, "remote_audio_path": remote_path})
+        else:
+            self._rows = []
+
+    def fetchall(self):
+        return list(self._rows)
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+
+def _patch_rclone(fake: _FakeRclone):
+    """Swap out the subprocess seam; return the originals so we can restore."""
+    orig = onedrive_sync._run_rclone
+    onedrive_sync._run_rclone = fake
+    return orig
+
+
+def _restore_rclone(orig):
+    onedrive_sync._run_rclone = orig
+
+
+def _default_cfg(**overrides):
+    cfg = {
+        "rclone_remote_name": "onedrive",
+        "remote_base_path": "Bat Recordings from pi01",
+        "rclone_bin": "rclone",
+        "max_files_per_batch": 50,
+        "timeout_per_file_sec": 60,
+        "pi_site": "pi01",
+        "dry_run": False,
+        "_enabled": True,
+    }
+    cfg.update(overrides)
+    return cfg
+
+
+def test_sync_disabled_short_circuits():
+    fake = _FakeRclone()
+    orig = _patch_rclone(fake)
+    try:
+        result = onedrive_sync.sync_tier1_to_onedrive(
+            _OnedriveMockConn([]), _default_cfg(_enabled=False),
+        )
+    finally:
+        _restore_rclone(orig)
+    assert result["action"] == "disabled"
+    assert fake.calls == [], "disabled path must not shell out"
+
+
+def test_sync_rclone_unavailable_returns_error():
+    fake = _FakeRclone()
+    fake.version_ok = False
+    orig = _patch_rclone(fake)
+    try:
+        result = onedrive_sync.sync_tier1_to_onedrive(
+            _OnedriveMockConn([]), _default_cfg(),
+        )
+    finally:
+        _restore_rclone(orig)
+    assert result["action"] == "error"
+    assert result["errors"][0]["error"] == "rclone not available"
+
+
+def test_sync_no_candidates():
+    fake = _FakeRclone()
+    orig = _patch_rclone(fake)
+    try:
+        result = onedrive_sync.sync_tier1_to_onedrive(
+            _OnedriveMockConn([]), _default_cfg(),
+        )
+    finally:
+        _restore_rclone(orig)
+    assert result["action"] == "no_candidates"
+
+
+def test_sync_end_to_end_with_fake_rclone():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        # Lay out two tier-1 files under a fake /bat_audio/ prefix so
+        # _build_remote_path accepts them. We temporarily point the
+        # prefix at tmp/bat_audio for the duration of this test.
+        bat_audio = tmp / "bat_audio"
+        f1 = make_wav(bat_audio / "tier1_permanent/PESU/pi01_20260417T143022Z.wav", size_bytes=1000)
+        f2 = make_wav(bat_audio / "tier1_permanent/LACI/pi01_20260417T150000Z.wav", size_bytes=2000)
+
+        orig_prefix = onedrive_sync.LOCAL_AUDIO_PREFIX
+        onedrive_sync.LOCAL_AUDIO_PREFIX = str(bat_audio) + "/"
+        fake = _FakeRclone()
+        orig_run = _patch_rclone(fake)
+        try:
+            conn = _OnedriveMockConn([
+                (1, str(f1), datetime(2026, 4, 17, 14, 30, 22, tzinfo=timezone.utc)),
+                (2, str(f2), datetime(2026, 4, 17, 15, 0, 0, tzinfo=timezone.utc)),
+            ])
+            result = onedrive_sync.sync_tier1_to_onedrive(conn, _default_cfg())
+        finally:
+            _restore_rclone(orig_run)
+            onedrive_sync.LOCAL_AUDIO_PREFIX = orig_prefix
+
+    assert result["action"] == "synced"
+    assert result["candidates_found"] == 2
+    assert result["uploads_succeeded"] == 2
+    assert result["uploads_failed"] == 0
+    assert result["bytes_uploaded"] == 3000
+
+    # Both rows got marked with the expected remote paths.
+    marked_by_id = {m["id"]: m["remote_audio_path"] for m in conn.marked_synced}
+    assert "onedrive:Bat Recordings from pi01/tier1_permanent/PESU/" in marked_by_id[1]
+    assert "onedrive:Bat Recordings from pi01/tier1_permanent/LACI/" in marked_by_id[2]
+
+    # rclone was invoked version + lsjson + copyto per file.
+    subcommands = [c["args"][1] for c in fake.calls if len(c["args"]) > 1]
+    assert subcommands.count("copyto") == 2
+    assert subcommands.count("lsjson") == 2
+    assert subcommands.count("version") == 1
+
+
+def test_sync_skips_upload_when_remote_already_exists():
+    """Idempotency: file already on OneDrive from a prior failed DB update."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        bat_audio = tmp / "bat_audio"
+        f1 = make_wav(bat_audio / "tier1_permanent/PESU/pi01_20260417T143022Z.wav", size_bytes=1000)
+
+        orig_prefix = onedrive_sync.LOCAL_AUDIO_PREFIX
+        onedrive_sync.LOCAL_AUDIO_PREFIX = str(bat_audio) + "/"
+        fake = _FakeRclone()
+        # Pretend the file is already present on the remote.
+        fake.existing_targets.add(
+            f"onedrive:Bat Recordings from pi01/tier1_permanent/PESU/pi01_20260417T143022Z.wav"
+        )
+        orig_run = _patch_rclone(fake)
+        try:
+            conn = _OnedriveMockConn([
+                (1, str(f1), datetime(2026, 4, 17, 14, 30, 22, tzinfo=timezone.utc)),
+            ])
+            result = onedrive_sync.sync_tier1_to_onedrive(conn, _default_cfg())
+        finally:
+            _restore_rclone(orig_run)
+            onedrive_sync.LOCAL_AUDIO_PREFIX = orig_prefix
+
+    assert result["uploads_attempted"] == 0
+    assert result["uploads_succeeded"] == 0
+    # Row was still marked — that's the whole point of backfill.
+    assert len(conn.marked_synced) == 1
+    # And crucially, no copyto was issued.
+    subcommands = [c["args"][1] for c in fake.calls if len(c["args"]) > 1]
+    assert "copyto" not in subcommands
+
+
+def test_sync_upload_failure_does_not_mark_synced():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        bat_audio = tmp / "bat_audio"
+        f1 = make_wav(bat_audio / "tier1_permanent/PESU/x.wav", size_bytes=1000)
+
+        orig_prefix = onedrive_sync.LOCAL_AUDIO_PREFIX
+        onedrive_sync.LOCAL_AUDIO_PREFIX = str(bat_audio) + "/"
+        fake = _FakeRclone()
+        fake.copyto_succeeds = False
+        fake.copyto_stderr = b"network unreachable"
+        orig_run = _patch_rclone(fake)
+        try:
+            conn = _OnedriveMockConn([
+                (42, str(f1), datetime(2026, 4, 17, tzinfo=timezone.utc)),
+            ])
+            result = onedrive_sync.sync_tier1_to_onedrive(conn, _default_cfg())
+        finally:
+            _restore_rclone(orig_run)
+            onedrive_sync.LOCAL_AUDIO_PREFIX = orig_prefix
+
+    assert result["uploads_failed"] == 1
+    assert result["uploads_succeeded"] == 0
+    assert conn.marked_synced == []
+    assert "network unreachable" in result["errors"][0]["error"]
+
+
+def test_sync_missing_local_file_reports_error():
+    fake = _FakeRclone()
+    orig_run = _patch_rclone(fake)
+    try:
+        conn = _OnedriveMockConn([
+            (99, "/bat_audio/tier1_permanent/PESU/ghost.wav",
+             datetime(2026, 4, 17, tzinfo=timezone.utc)),
+        ])
+        result = onedrive_sync.sync_tier1_to_onedrive(conn, _default_cfg())
+    finally:
+        _restore_rclone(orig_run)
+
+    assert result["uploads_failed"] == 1
+    assert result["errors"][0]["error"] == "local_file_missing"
+    assert conn.marked_synced == []
+
+
+def test_sync_respects_max_files_per_batch():
+    fake = _FakeRclone()
+    orig_run = _patch_rclone(fake)
+    try:
+        candidates = [
+            (i, f"/bat_audio/tier1_permanent/PESU/p{i}.wav",
+             datetime(2026, 4, 17, tzinfo=timezone.utc))
+            for i in range(200)
+        ]
+        conn = _OnedriveMockConn(candidates)
+        result = onedrive_sync.sync_tier1_to_onedrive(
+            conn, _default_cfg(max_files_per_batch=5),
+        )
+    finally:
+        _restore_rclone(orig_run)
+    # Files don't actually exist → all fail — but we still observe that
+    # the batch was capped at 5.
+    assert result["candidates_found"] == 5
+
+
+# -----------------------------------------------------------------------------
 # Runner
 # -----------------------------------------------------------------------------
 
@@ -609,6 +955,26 @@ TESTS = [
     # disk watchdog — SQL protection assertions
     test_stage_sql_excludes_unsynced_tier1,
     test_stage_sql_excludes_verified,
+    # OneDrive — path building
+    test_build_remote_path_strips_bat_audio_prefix,
+    test_build_remote_path_preserves_class_folder,
+    test_build_remote_path_rejects_paths_outside_bat_audio,
+    test_build_remote_path_strips_trailing_slash_on_base,
+    # OneDrive — SQL assertions
+    test_find_candidates_sql_orders_oldest_first,
+    test_find_candidates_sql_excludes_already_synced,
+    test_find_candidates_sql_requires_tier_1,
+    test_find_candidates_sql_respects_limit,
+    test_find_candidates_sql_requires_audio_on_disk,
+    # OneDrive — orchestrator
+    test_sync_disabled_short_circuits,
+    test_sync_rclone_unavailable_returns_error,
+    test_sync_no_candidates,
+    test_sync_end_to_end_with_fake_rclone,
+    test_sync_skips_upload_when_remote_already_exists,
+    test_sync_upload_failure_does_not_mark_synced,
+    test_sync_missing_local_file_reports_error,
+    test_sync_respects_max_files_per_batch,
 ]
 
 
