@@ -583,6 +583,7 @@ def cleanup_old_data(conn):
 
 def main():
     sync_interval = int(os.getenv("SYNC_INTERVAL", "60"))
+    health_interval = int(os.getenv("HEALTH_INTERVAL", "15"))
 
     enable_onedrive = os.getenv("ENABLE_ONEDRIVE_SYNC", "false").lower() == "true"
     onedrive_interval_sec = int(os.getenv("ONEDRIVE_SYNC_INTERVAL_MINUTES", "60")) * 60
@@ -609,17 +610,35 @@ def main():
     except Exception as e:
         print(f"[SYNC] Migration warning: {e}")
 
-    print(f"[SYNC] Starting sync loop (interval: {sync_interval}s)")
+    print(f"[SYNC] Starting sync loop (data: {sync_interval}s, health: {health_interval}s)")
 
     cycle = 0
+    last_data_sync = 0.0  # force immediate first data sync
     while True:
         try:
             conn = get_db_connection()
+            now = time.time()
 
-            class_count = sync_classifications(conn, db)
-            bat_count = sync_bat_detections(conn, db)
-            env_count = sync_environmental_readings(conn, db)
-            audio_count = upload_bat_audio(conn, db)
+            # Full data sync at the longer interval
+            if now - last_data_sync >= sync_interval:
+                class_count = sync_classifications(conn, db)
+                bat_count = sync_bat_detections(conn, db)
+                env_count = sync_environmental_readings(conn, db)
+                audio_count = upload_bat_audio(conn, db)
+                last_data_sync = now
+
+                now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, {env_count} env, health ok ({now_str})")
+                if audio_count > 0:
+                    print(f"[SYNC] Uploaded {audio_count} bat audio file(s)")
+
+                # Run retention cleanup once per hour
+                if cycle % (3600 // sync_interval) == 0 and cycle > 0:
+                    cleanup_old_data(conn)
+
+                cycle += 1
+
+            # Health status pushed every tick (fast interval)
             sync_device_status(conn, db)
 
             # Reclaim disk if the bat_audio store crossed the hard cap, or
@@ -654,22 +673,12 @@ def main():
                     for err in result["errors"][:5]:
                         print(f"[SYNC]   err: {err.get('file')} -> {err.get('error')}")
 
-            now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            print(f"[SYNC] Cycle {cycle}: {class_count} cls, {bat_count} bat, {env_count} env, health ok ({now_str})")
-            if audio_count > 0:
-                print(f"[SYNC] Uploaded {audio_count} bat audio file(s)")
-
-            # Run retention cleanup once per hour (every 60 cycles at 60s interval)
-            cycle += 1
-            if cycle % 60 == 0:
-                cleanup_old_data(conn)
-
             conn.close()
 
         except Exception as e:
             print(f"[SYNC] Error: {e}")
 
-        time.sleep(sync_interval)
+        time.sleep(health_interval)
 
 
 if __name__ == "__main__":

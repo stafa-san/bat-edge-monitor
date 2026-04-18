@@ -79,6 +79,7 @@ services:
       - /proc/meminfo:/host/meminfo:ro
       - /proc/loadavg:/host/loadavg:ro
       - /sys/class/thermal/thermal_zone0/temp:/host/cpu_temp:ro
+      - /proc/asound:/host/asound:ro
       - bat_audio:/bat_audio
       - control_flags:/control
       # rclone OAuth config from the host. Mounted read-only so the

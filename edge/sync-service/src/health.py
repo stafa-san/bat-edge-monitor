@@ -104,18 +104,18 @@ def check_internet(timeout: float = 5) -> tuple[bool, float | None]:
 # ---------------------------------------------------------------------------
 
 def check_audiomoth(conn) -> bool:
-    """Return True if classifications arrived in the last 5 minutes.
+    """Return True if an AudioMoth USB microphone is physically connected.
 
-    Uses a 5-minute window (rather than 2) to account for the
-    buffer flush delay and AudioMoth device-contention retries.
+    Checks /proc/asound/cards (mounted at /host/asound/cards) for an
+    AudioMoth device.  This gives instant detection when the device is
+    plugged or unplugged, unlike the previous approach of querying for
+    recent classifications (which had up to a 5-minute lag).
     """
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM classifications "
-                "WHERE sync_time > NOW() - INTERVAL '5 minutes'"
-            )
-            return cur.fetchone()[0] > 0
+        with open("/host/asound/cards", "r") as f:
+            return "AudioMoth" in f.read()
+    except FileNotFoundError:
+        return False
     except Exception:
         return False
 
