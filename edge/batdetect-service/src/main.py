@@ -44,7 +44,7 @@ def ensure_connection(conn):
 LOCK_PATH = "/locks/audio_device.lock"
 UPLOAD_BAT_AUDIO = os.getenv("UPLOAD_BAT_AUDIO", "false").lower() == "true"
 BAT_AUDIO_DIR = "/bat_audio"
-CLASSIFIER_DET_THRESHOLD = 0.5  # Matches training filter; see BATDETECT2_TRAINING.md
+CLASSIFIER_DET_THRESHOLD = float(os.getenv("CLASSIFIER_DET_THRESHOLD", "0.3"))
 
 # Shared control volume with sync-service. Disk watchdog touches this file
 # when it wants us to stop capturing until pressure is relieved.

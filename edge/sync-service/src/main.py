@@ -400,7 +400,9 @@ def sync_device_status(conn, db):
         conn.commit()
 
         # ── Build the payload once and reuse it ──
-        sample_rate = int(os.getenv("SAMPLE_RATE", "250000"))
+        configured_rate = int(os.getenv("SAMPLE_RATE", "192000"))
+        hw_rate = metrics["audiomoth_hw_sample_rate"]
+        sample_rate = hw_rate if hw_rate else configured_rate
         bat_audio_dir = os.getenv("BAT_AUDIO_DIR", "/bat_audio")
         payload = {
             "uptimeSeconds": metrics["uptime_seconds"],
@@ -415,6 +417,7 @@ def sync_device_status(conn, db):
             "internetConnected": metrics["internet_connected"],
             "internetLatencyMs": metrics["internet_latency_ms"],
             "audiomothConnected": metrics["audiomoth_connected"],
+            "audiomothHwSampleRate": metrics["audiomoth_hw_sample_rate"],
             "captureErrors1h": metrics["capture_errors_1h"],
             "dbSizeMb": metrics["db_size_mb"],
             "classificationsTotal": metrics["classifications_total"],

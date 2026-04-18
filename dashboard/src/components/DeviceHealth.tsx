@@ -26,6 +26,7 @@ export interface DeviceStatus {
   batDetectionsTotal: number;
   unsyncedCount: number;
   sampleRateHz?: number;
+  audiomothHwSampleRate?: number | null;
   recordedAt: Timestamp;
   lastSeen?: Timestamp;
   lastOffline?: Timestamp;
@@ -556,8 +557,10 @@ export function DeviceHealth({
           />
           <MetricCard
             label="Sample Rate"
-            value={formatSampleRate(status.sampleRateHz)}
-            sub={status.sampleRateHz ? `${status.sampleRateHz.toLocaleString()} Hz` : undefined}
+            value={formatSampleRate(status.audiomothHwSampleRate ?? status.sampleRateHz)}
+            sub={status.audiomothHwSampleRate
+              ? `${status.audiomothHwSampleRate.toLocaleString()} Hz (hardware)`
+              : status.sampleRateHz ? `${status.sampleRateHz.toLocaleString()} Hz` : undefined}
             color="text-blue-600"
           />
           <MetricCard
