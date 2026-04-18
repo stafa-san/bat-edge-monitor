@@ -43,6 +43,9 @@ interface BatDetection {
   detectionTime: Timestamp;
   audioUrl?: string;
   source?: string;
+  predictedClass?: string;
+  predictionConfidence?: number;
+  modelVersion?: string;
 }
 
 export default function Dashboard() {
@@ -278,6 +281,9 @@ export default function Dashboard() {
           batDetections={batDetections}
         />
 
+        {/* Bat Detection Feed — primary content */}
+        <BatDetectionFeed detections={batDetections} />
+
         {/* Device Health */}
         <DeviceHealth
           status={deviceStatus}
@@ -286,8 +292,6 @@ export default function Dashboard() {
           onHistoryRangeChange={setHistoryRange}
         />
 
-        <UploadAnalysisPanel />
-
         {/* Environmental Panel */}
         <EnvironmentalPanel
           readings={environmentalReadings}
@@ -295,85 +299,83 @@ export default function Dashboard() {
           onTimeRangeChange={setEnvTimeRange}
         />
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SoundscapeChart classifications={classifications} />
-          <BatDetectionFeed detections={batDetections} />
-        </div>
+        <UploadAnalysisPanel />
 
-        {/* SPL Timeline */}
-        <SPLTimeline classifications={classifications} />
+        {/* Acoustic Environment — secondary, collapsible */}
+        <details className="group">
+          <summary className="bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-4 cursor-pointer list-none flex items-center justify-between hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🔊</span>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Acoustic Environment
+              </h2>
+              <span className="text-sm text-gray-400 ml-2">
+                SPL, sound classes, background noise
+              </span>
+            </div>
+            <svg
+              className="w-5 h-5 text-gray-400 transition-transform group-open:rotate-180"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div className="mt-4 space-y-6">
+            {/* SPL Timeline */}
+            <SPLTimeline classifications={classifications} />
 
-        {/* Recent Classifications Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Recent Classifications
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">
-                    Label
-                  </th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">
-                    Score
-                  </th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">
-                    SPL (dB)
-                  </th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">
-                    Device
-                  </th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">
-                    Time
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {classifications.slice(0, 20).map((c) => (
-                  <tr
-                    key={c.id}
-                    className="border-b border-gray-100 hover:bg-gray-50"
-                  >
-                    <td className="py-3 px-4 font-medium text-gray-900">
-                      <div className="flex items-center gap-2">
-                        <span>{c.label}</span>
-                        {c.source === "upload" && (
-                          <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded shrink-0">
-                            UPLOAD
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-500 h-2 rounded-full"
-                            style={{ width: `${Math.min(c.score * 100, 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-gray-600">
-                          {(c.score * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">
-                      {c.spl?.toFixed(1) ?? "—"}
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">{c.device}</td>
-                    <td className="py-3 px-4 text-gray-500">
-                      {c.syncTime?.toDate
-                        ? c.syncTime.toDate().toLocaleTimeString()
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <SoundscapeChart classifications={classifications} />
+
+              {/* Compact recent classifications */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                  Recent Classifications
+                </h2>
+                <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Label</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Score</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">SPL</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {classifications.slice(0, 20).map((c) => (
+                        <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2 px-3 font-medium text-gray-900 text-xs">
+                            <div className="flex items-center gap-1">
+                              <span>{c.label}</span>
+                              {c.source === "upload" && (
+                                <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1 py-0.5 rounded">
+                                  UPLOAD
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-600">
+                            {(c.score * 100).toFixed(1)}%
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-600">
+                            {c.spl?.toFixed(1) ?? "—"}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-500">
+                            {c.syncTime?.toDate ? c.syncTime.toDate().toLocaleTimeString() : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </details>
       </div>
     </main>
   );

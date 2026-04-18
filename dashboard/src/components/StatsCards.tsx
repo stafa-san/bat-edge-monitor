@@ -6,19 +6,28 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ classifications, batDetections }: StatsCardsProps) {
-  const avgSpl = classifications.length > 0
-    ? classifications.reduce((sum, c) => sum + (c.spl || 0), 0) / classifications.length
-    : 0;
+  // Bat-focused stats
+  const speciesGroups = new Set(
+    batDetections
+      .map((d: any) => d.predictedClass || d.species)
+      .filter(Boolean)
+  ).size;
 
-  const uniqueLabels = new Set(classifications.map((c) => c.label)).size;
+  const avgConfidence =
+    batDetections.length > 0
+      ? batDetections.reduce(
+          (sum: number, d: any) => sum + (d.predictionConfidence || d.detectionProb || 0),
+          0
+        ) / batDetections.length
+      : 0;
+
+  const avgSpl =
+    classifications.length > 0
+      ? classifications.reduce((sum: number, c: any) => sum + (c.spl || 0), 0) /
+        classifications.length
+      : 0;
 
   const stats = [
-    {
-      label: "Classifications",
-      value: classifications.length.toString(),
-      icon: "🎵",
-      color: "bg-blue-50 text-blue-700",
-    },
     {
       label: "Bat Detections",
       value: batDetections.length.toString(),
@@ -26,15 +35,21 @@ export function StatsCards({ classifications, batDetections }: StatsCardsProps) 
       color: "bg-purple-50 text-purple-700",
     },
     {
-      label: "Avg SPL",
-      value: `${avgSpl.toFixed(1)} dB`,
-      icon: "📊",
+      label: "Species Groups",
+      value: speciesGroups.toString(),
+      icon: "🧬",
+      color: "bg-indigo-50 text-indigo-700",
+    },
+    {
+      label: "Avg Confidence",
+      value: `${(avgConfidence * 100).toFixed(1)}%`,
+      icon: "🎯",
       color: "bg-green-50 text-green-700",
     },
     {
-      label: "Sound Classes",
-      value: uniqueLabels.toString(),
-      icon: "🏷️",
+      label: "Avg SPL",
+      value: `${avgSpl.toFixed(1)} dB`,
+      icon: "📊",
       color: "bg-amber-50 text-amber-700",
     },
   ];
@@ -52,7 +67,9 @@ export function StatsCards({ classifications, batDetections }: StatsCardsProps) 
             </span>
             <span className="text-xl">{stat.icon}</span>
           </div>
-          <p className={`text-2xl font-bold ${stat.color} inline-block px-2 py-0.5 rounded`}>
+          <p
+            className={`text-2xl font-bold ${stat.color} inline-block px-2 py-0.5 rounded`}
+          >
             {stat.value}
           </p>
         </div>
