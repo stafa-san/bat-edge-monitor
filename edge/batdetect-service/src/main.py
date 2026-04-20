@@ -16,6 +16,7 @@ from batdetect2 import api as bat_api
 from scipy.signal import butter, sosfiltfilt
 
 from src import storage
+from src.audio_validator import is_likely_bat_call
 from src.classifier import classify, load_groups_classifier
 
 
@@ -133,16 +134,16 @@ def _run_batdetect_legacy(audio_path, config, hpf_sos=None):
 def _run_batdetect_with_classifier(
     audio_path, classifier_model, classifier_ckpt, config, hpf_sos=None,
     min_pred_conf: float = 0.6,
+    validator_cfg: dict | None = None,
 ):
-    """New path — process_audio gives us features for the classifier head.
+    """Returns ``(rows_data, rejection_reason)``.
 
-    Returns a list of (detection_dict, prediction_dict) tuples that passed
-    BOTH the BatDetect2 base threshold (from ``config['detection_threshold']``)
-    AND the classifier confidence gate (``min_pred_conf``). Anything below
-    either threshold is dropped — no DB row, no WAV, no dashboard entry.
-
-    ``hpf_sos`` (optional) is a precomputed SOS Butterworth HPF applied
-    before BatDetect2 sees the audio.
+    ``rows_data`` is the list of surviving ``(detection, prediction)``
+    tuples that will become Postgres rows. When empty, ``rejection_reason``
+    names the gate that dropped the segment — either a classifier-level
+    gate ("batdetect2_no_detections", "classifier_all_below_conf") or
+    an audio-validator reason string. ``None`` when we didn't even get
+    to the validator.
     """
     audio = bat_api.load_audio(audio_path)
     if hpf_sos is not None:
@@ -152,26 +153,43 @@ def _run_batdetect_with_classifier(
     # leaks through.
     detections, features, _ = bat_api.process_audio(audio, config=config)
     if not detections:
-        return []
+        return [], "batdetect2_no_detections"
 
     # Secondary classifier-side detection gate. Kept as a safety net in
     # case someone sets DETECTION_THRESHOLD below CLASSIFIER_DET_THRESHOLD.
     mask = np.array([d.get("det_prob", 0.0) >= CLASSIFIER_DET_THRESHOLD for d in detections])
     if not mask.any():
-        return []
+        return [], "all_below_classifier_det_threshold"
 
     high_conf_dets = [d for d, m in zip(detections, mask) if m]
     high_conf_feats = features[mask]
     preds = classify(high_conf_feats, classifier_model, classifier_ckpt)
 
-    # Final "is this actually a confident bat call?" gate. Anything that
-    # doesn't clear this is dropped silently — the dashboard feed, the
-    # WAV archive, and the Google Drive mirror all share this same
-    # definition of "real detection."
-    return [
+    # Classifier-confidence gate.
+    kept = [
         (d, p) for d, p in zip(high_conf_dets, preds)
         if p["prediction_confidence"] >= min_pred_conf
     ]
+    if not kept:
+        return [], "all_below_min_pred_conf"
+
+    # Audio-level validator — "is this actually a bat call?"
+    # Runs only when the classifier has at least one confident pick
+    # so we don't waste cycles on silence. Rate for the spectrogram
+    # checks comes from BatDetect2's target rate (its load_audio
+    # resamples to target_samp_rate).
+    if validator_cfg and validator_cfg.get("enabled", True):
+        val_sr = int(config.get("target_samp_rate", 256000))
+        ok, reason = is_likely_bat_call(
+            audio, val_sr,
+            min_rms=validator_cfg.get("min_rms", 0.005),
+            min_snr_db=validator_cfg.get("min_snr_db", 10.0),
+            min_burst_ratio=validator_cfg.get("min_burst_ratio", 3.0),
+        )
+        if not ok:
+            return [], f"validator:{reason}"
+
+    return kept, None
 
 
 async def main():
@@ -185,6 +203,14 @@ async def main():
     site_id = os.getenv("PI_SITE", "pi01")
     model_path = os.getenv("MODEL_PATH", "/app/models/groups_model.pt")
     model_version = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-17")
+
+    # Audio-level validator (signal-processing sanity check, no ML).
+    validator_cfg = {
+        "enabled": os.getenv("VALIDATOR_ENABLED", "true").lower() == "true",
+        "min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.005")),
+        "min_snr_db": float(os.getenv("VALIDATOR_MIN_SNR_DB", "10.0")),
+        "min_burst_ratio": float(os.getenv("VALIDATOR_MIN_BURST_RATIO", "3.0")),
+    }
 
     if enable_storage_tiering and not enable_classifier:
         raise RuntimeError(
@@ -230,6 +256,16 @@ async def main():
     else:
         print("[BAT] Storage tiering disabled (ENABLE_STORAGE_TIERING=false)")
 
+    if validator_cfg["enabled"]:
+        print(
+            f"[BAT] Audio validator enabled — "
+            f"min_rms={validator_cfg['min_rms']}, "
+            f"min_snr_db={validator_cfg['min_snr_db']}, "
+            f"min_burst_ratio={validator_cfg['min_burst_ratio']}"
+        )
+    else:
+        print("[BAT] Audio validator disabled (VALIDATOR_ENABLED=false)")
+
     conn = get_db_connection()
 
     print(
@@ -255,10 +291,12 @@ async def main():
             audio_path = await capture.capture_segment(duration=segment_duration)
 
             # Run detection (+ optionally classification)
+            rejection_reason = None
             if enable_classifier:
-                rows_data = _run_batdetect_with_classifier(
+                rows_data, rejection_reason = _run_batdetect_with_classifier(
                     audio_path, classifier_model, classifier_ckpt, config,
                     hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
+                    validator_cfg=validator_cfg,
                 )
             else:
                 rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
@@ -351,7 +389,12 @@ async def main():
                     """, rows)
                 conn.commit()
             else:
-                if segment_count % 10 == 0:
+                # Validator rejections are logged every time so we can
+                # see what's being filtered; pure no-detection heartbeats
+                # stay at 1-per-10-segments to keep the log quiet.
+                if rejection_reason and rejection_reason.startswith("validator:"):
+                    print(f"[BAT] #{segment_count} | rejected by {rejection_reason}")
+                elif segment_count % 10 == 0:
                     print(f"[BAT] #{segment_count} | No bat calls detected (listening...)")
 
             # Clean up temp file

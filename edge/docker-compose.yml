@@ -44,16 +44,24 @@ services:
       # would force BatDetect2 to do its own resample, an extra step for
       # no gain — all bat calls of interest are <120 kHz.
       - SAMPLE_RATE=256000
-      # BatDetect2 UK-trained model can't score NA bats above ~0.4
-      # det_prob, so 0.3 is the realistic base-detector floor. Quality
-      # control is primarily enforced by MIN_PREDICTION_CONF against
-      # the NA-trained classifier head.
-      - DETECTION_THRESHOLD=0.3
+      # Matches training: BatDetect2 features were filtered at
+      # det_prob > 0.5 when the classifier head was trained. Inference
+      # uses the same threshold so classifier inputs stay in the
+      # training distribution. See BATDETECT2_TRAINING.md section 1.
+      - DETECTION_THRESHOLD=0.5
       - MIN_PREDICTION_CONF=${MIN_PREDICTION_CONF:-0.6}
       - SEGMENT_DURATION=15
       - HPF_ENABLED=${HPF_ENABLED:-true}
       - HPF_CUTOFF_HZ=${HPF_CUTOFF_HZ:-16000}
       - HPF_ORDER=${HPF_ORDER:-4}
+      # Audio-level validator — final sanity check. Rejects segments
+      # where the classifier confidently picked a class but the audio
+      # itself is silence / broadband noise (e.g. the 0.0012-RMS file
+      # that got through on 2026-04-20).
+      - VALIDATOR_ENABLED=${VALIDATOR_ENABLED:-true}
+      - VALIDATOR_MIN_RMS=${VALIDATOR_MIN_RMS:-0.005}
+      - VALIDATOR_MIN_SNR_DB=${VALIDATOR_MIN_SNR_DB:-10.0}
+      - VALIDATOR_MIN_BURST_RATIO=${VALIDATOR_MIN_BURST_RATIO:-3.0}
       - UPLOAD_BAT_AUDIO=false
       - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
       - MODEL_PATH=/app/models/groups_model.pt
