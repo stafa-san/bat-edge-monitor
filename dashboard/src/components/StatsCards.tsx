@@ -3,9 +3,14 @@
 interface StatsCardsProps {
   classifications: any[];
   batDetections: any[];
+  // Authoritative totals from the edge device, written on every
+  // sync-service health tick. When present we prefer these over the
+  // recent-list length so the summary doesn't silently cap at whatever
+  // the Firestore feed queries (currently 50).
+  batDetectionsTotal?: number;
 }
 
-export function StatsCards({ classifications, batDetections }: StatsCardsProps) {
+export function StatsCards({ classifications, batDetections, batDetectionsTotal }: StatsCardsProps) {
   // Bat-focused stats
   const speciesGroups = new Set(
     batDetections
@@ -27,28 +32,36 @@ export function StatsCards({ classifications, batDetections }: StatsCardsProps) 
         classifications.length
       : 0;
 
+  const totalDetections = typeof batDetectionsTotal === "number"
+    ? batDetectionsTotal
+    : batDetections.length;
+
   const stats = [
     {
       label: "Bat Detections",
-      value: batDetections.length.toString(),
+      value: totalDetections.toLocaleString(),
+      sub: `last ${Math.min(batDetections.length, totalDetections)} shown below`,
       icon: "🦇",
       color: "bg-purple-50 text-purple-700",
     },
     {
       label: "Species Groups",
       value: speciesGroups.toString(),
+      sub: "in recent feed",
       icon: "🧬",
       color: "bg-indigo-50 text-indigo-700",
     },
     {
       label: "Avg Confidence",
       value: `${(avgConfidence * 100).toFixed(1)}%`,
+      sub: "recent feed",
       icon: "🎯",
       color: "bg-green-50 text-green-700",
     },
     {
       label: "Avg SPL",
       value: `${avgSpl.toFixed(1)} dB`,
+      sub: "recent samples",
       icon: "📊",
       color: "bg-amber-50 text-amber-700",
     },
@@ -72,6 +85,9 @@ export function StatsCards({ classifications, batDetections }: StatsCardsProps) 
           >
             {stat.value}
           </p>
+          {stat.sub && (
+            <p className="text-xs text-gray-400 mt-1">{stat.sub}</p>
+          )}
         </div>
       ))}
     </div>
