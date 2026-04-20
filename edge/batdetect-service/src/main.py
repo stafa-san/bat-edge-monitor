@@ -13,6 +13,7 @@ import numpy as np
 import psycopg2
 from psycopg2.extras import execute_values
 from batdetect2 import api as bat_api
+from scipy.signal import butter, sosfiltfilt
 
 from src import storage
 from src.classifier import classify, load_groups_classifier
@@ -46,9 +47,29 @@ UPLOAD_BAT_AUDIO = os.getenv("UPLOAD_BAT_AUDIO", "false").lower() == "true"
 BAT_AUDIO_DIR = "/bat_audio"
 CLASSIFIER_DET_THRESHOLD = float(os.getenv("CLASSIFIER_DET_THRESHOLD", "0.3"))
 
+# Software high-pass filter applied to the in-memory audio *before* it
+# hits BatDetect2. The AudioMoth hardware HPF at 8 kHz is the primary
+# cut; this is a secondary defence at 16 kHz to keep any residual
+# low-frequency energy (fan, wind, electrical) out of the detector's
+# view. The archived WAV remains unfiltered so advisors can inspect it
+# with full context.
+HPF_ENABLED = os.getenv("HPF_ENABLED", "true").lower() == "true"
+HPF_CUTOFF_HZ = float(os.getenv("HPF_CUTOFF_HZ", "16000"))
+HPF_ORDER = int(os.getenv("HPF_ORDER", "4"))
+
 # Shared control volume with sync-service. Disk watchdog touches this file
 # when it wants us to stop capturing until pressure is relieved.
 HALT_FLAG = Path("/control/halt_recordings")
+
+
+def _design_hpf(cutoff_hz: float, sample_rate: int, order: int):
+    """Return a SOS Butterworth HPF design for the given sample rate."""
+    return butter(order, cutoff_hz, btype="highpass", fs=sample_rate, output="sos")
+
+
+def _apply_hpf(audio: np.ndarray, sos) -> np.ndarray:
+    """Zero-phase Butterworth HPF. Preserves length and dtype-compatible output."""
+    return sosfiltfilt(sos, audio).astype(audio.dtype, copy=False)
 
 
 class BatAudioCapture:
@@ -90,21 +111,38 @@ class BatAudioCapture:
         return temp_file
 
 
-def _run_batdetect_legacy(audio_path, config):
-    """Legacy path — raw BatDetect2 only. Used when the classifier is disabled."""
-    results = bat_api.process_file(audio_path, config=config)
-    pred_dict = results.get("pred_dict", {})
-    detections = pred_dict.get("annotation", [])
+def _run_batdetect_legacy(audio_path, config, hpf_sos=None):
+    """Legacy path — raw BatDetect2 only. Used when the classifier is disabled.
+
+    When ``hpf_sos`` is provided, the audio is loaded, high-pass filtered,
+    and fed to ``process_audio`` directly (bypassing ``process_file``) so
+    the HPF actually takes effect.
+    """
+    if hpf_sos is None:
+        results = bat_api.process_file(audio_path, config=config)
+        pred_dict = results.get("pred_dict", {})
+        detections = pred_dict.get("annotation", [])
+        return [(d, None) for d in detections]
+
+    audio = bat_api.load_audio(audio_path)
+    audio = _apply_hpf(audio, hpf_sos)
+    detections, _, _ = bat_api.process_audio(audio, config=config)
     return [(d, None) for d in detections]
 
 
-def _run_batdetect_with_classifier(audio_path, classifier_model, classifier_ckpt):
+def _run_batdetect_with_classifier(
+    audio_path, classifier_model, classifier_ckpt, hpf_sos=None,
+):
     """New path — process_audio gives us features for the classifier head.
 
     Returns a list of (detection_dict, prediction_dict_or_None) tuples,
     filtered to det_prob > CLASSIFIER_DET_THRESHOLD (matches training).
+    ``hpf_sos`` (optional) is a precomputed SOS Butterworth HPF applied
+    before BatDetect2 sees the audio.
     """
     audio = bat_api.load_audio(audio_path)
+    if hpf_sos is not None:
+        audio = _apply_hpf(audio, hpf_sos)
     detections, features, _ = bat_api.process_audio(audio)
     if not detections:
         return []
@@ -138,6 +176,21 @@ async def main():
 
     print(f"[BAT] Initializing audio capture: {device_name} @ {sample_rate} Hz")
     capture = BatAudioCapture(device_name=device_name, sampling_rate=sample_rate)
+
+    hpf_sos = None
+    if HPF_ENABLED:
+        # BatDetect2 resamples to its internal target rate before analysis,
+        # so design the filter against that rate to match what the detector
+        # actually sees.
+        hpf_design_rate = bat_api.get_config().get("target_samp_rate", sample_rate)
+        hpf_sos = _design_hpf(HPF_CUTOFF_HZ, hpf_design_rate, HPF_ORDER)
+        print(
+            f"[BAT] HPF enabled: cutoff={int(HPF_CUTOFF_HZ)} Hz, "
+            f"order={HPF_ORDER} (applied at {hpf_design_rate} Hz, "
+            "analysis-only, archived WAV unchanged)"
+        )
+    else:
+        print("[BAT] HPF disabled (HPF_ENABLED=false)")
 
     print("[BAT] Loading BatDetect2 model...")
     config = bat_api.get_config()
@@ -184,9 +237,10 @@ async def main():
             if enable_classifier:
                 rows_data = _run_batdetect_with_classifier(
                     audio_path, classifier_model, classifier_ckpt,
+                    hpf_sos=hpf_sos,
                 )
             else:
-                rows_data = _run_batdetect_legacy(audio_path, config)
+                rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
 
             sync_id = str(uuid.uuid4())
             detection_time = datetime.utcnow()
@@ -202,9 +256,8 @@ async def main():
                 file_expires_at = None
 
                 if enable_storage_tiering:
-                    predictions = [pred for _, pred in rows_data if pred is not None]
-                    tier = storage.determine_tier(predictions)
-                    class_folder = storage.pick_class_folder(tier, predictions)
+                    tier = storage.determine_tier(rows_data)
+                    class_folder = storage.pick_class_folder(tier, rows_data)
                     if tier == 3:
                         archived_path = None
                         file_expires_at = None
@@ -216,7 +269,17 @@ async def main():
                     audio_saved_path = str(archived_path) if archived_path else None
                     file_storage_tier = tier
                     folder_str = f"/{class_folder}" if class_folder else ""
-                    print(f"  -> tier {tier}{folder_str} -> {audio_saved_path or '(no audio written)'}")
+                    max_det_prob = max((d.get("det_prob", 0.0) for d, _ in rows_data), default=0.0)
+                    max_pred_conf = max(
+                        (p["prediction_confidence"] for _, p in rows_data if p is not None),
+                        default=0.0,
+                    )
+                    print(
+                        f"  -> tier {tier}{folder_str} "
+                        f"(max det_prob={max_det_prob:.3f}, "
+                        f"max pred_conf={max_pred_conf:.3f}) "
+                        f"-> {audio_saved_path or '(no audio written)'}"
+                    )
                 elif UPLOAD_BAT_AUDIO:
                     os.makedirs(BAT_AUDIO_DIR, exist_ok=True)
                     audio_saved_path = f"{BAT_AUDIO_DIR}/{sync_id}.wav"

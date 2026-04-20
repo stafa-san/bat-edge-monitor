@@ -11,7 +11,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      - SAMPLE_RATE=192000
+      - SAMPLE_RATE=256000
     volumes:
       - audio_lock:/locks
     depends_on:
@@ -33,8 +33,17 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      - SAMPLE_RATE=192000
-      - DETECTION_THRESHOLD=0.3
+      # AudioMoth captures natively at 384 kHz (firmware 1.9.1). We ask
+      # ALSA for 256 kHz so plughw does a single clean resample down to
+      # BatDetect2's target_samp_rate (256 kHz). Setting this to 384000
+      # would force BatDetect2 to do its own resample, an extra step for
+      # no gain — all bat calls of interest are <120 kHz.
+      - SAMPLE_RATE=256000
+      - DETECTION_THRESHOLD=0.5
+      - SEGMENT_DURATION=15
+      - HPF_ENABLED=${HPF_ENABLED:-true}
+      - HPF_CUTOFF_HZ=${HPF_CUTOFF_HZ:-16000}
+      - HPF_ORDER=${HPF_ORDER:-4}
       - UPLOAD_BAT_AUDIO=false
       - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
       - MODEL_PATH=/app/models/groups_model.pt
@@ -59,7 +68,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - SYNC_INTERVAL=60
-      - SAMPLE_RATE=192000
+      - SAMPLE_RATE=256000
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_STORAGE_BUCKET=bat-edge-monitor.firebasestorage.app
       - UPLOAD_BAT_AUDIO=false
@@ -85,7 +94,7 @@ services:
       # rclone OAuth config from the host. Mounted read-only so the
       # container can never modify the tokens. Set up once per Pi via
       # edge/scripts/setup_rclone_onedrive.sh.
-      - /home/pi/.config/rclone:/root/.config/rclone:ro
+      - /home/stafa/.config/rclone:/root/.config/rclone:ro
     depends_on:
       db:
         condition: service_healthy
