@@ -34,18 +34,22 @@ from typing import Iterable, List, Optional, Tuple
 # TUNABLE TIER THRESHOLDS
 # -----------------------------------------------------------------------------
 
-THRESHOLDS_LAST_TUNED = "2026-04-20"
+THRESHOLDS_LAST_TUNED = "2026-04-21"
 
-# Tier 1: permanent archive + gdrive upload
-TIER1_CONFIDENCE_MIN = 0.7     # classifier prediction_confidence
-TIER1_DET_PROB_MIN = 0.5       # BatDetect2 det_prob
+# Single-gate archive policy. Quality filtering now happens UPSTREAM in
+# batdetect-service/main.py:_run_batdetect_with_classifier (gates on
+# both DETECTION_THRESHOLD / det_prob AND MIN_PREDICTION_CONF /
+# prediction_confidence). By the time determine_tier() sees a row, the
+# detection has already been judged "confident bat" — so it's always
+# tier 1 (permanent archive + Google Drive mirror). Tier 2/3/4 are kept
+# in the code as dead branches in case we want to reintroduce a
+# review-only tier without restructuring the whole pipeline.
+TIER1_CONFIDENCE_MIN = 0.0     # not used in practice — upstream filters
+TIER1_DET_PROB_MIN = 0.0       # not used in practice — upstream filters
 
-# Tier 2: 30-day local retention
-TIER2_CONFIDENCE_MIN = 0.4
-TIER2_DET_PROB_MIN = 0.5
+TIER2_CONFIDENCE_MIN = 0.0
+TIER2_DET_PROB_MIN = 0.0
 
-# No anomaly tier writes — tier 4 kept as a label in TIER_DIRS for
-# backwards compatibility but determine_tier() never returns 4.
 TIER4_CONFIDENCE_MAX = 0.0
 
 CLASS_PRIORITY_ORDER: Tuple[str, ...] = ("PESU", "LACI", "LABO", "MYSP", "EPFU_LANO")
@@ -71,37 +75,18 @@ TIER_DIRS = {
 def determine_tier(rows_data: Iterable[Tuple[dict, Optional[dict]]]) -> int:
     """Pick a storage tier from (detection, prediction) tuples.
 
-    Each tuple is ``(detection_dict, prediction_dict_or_None)`` where
-    ``detection_dict`` has a ``det_prob`` key and ``prediction_dict`` (when
-    present) has ``predicted_class`` and ``prediction_confidence``.
+    Single-gate policy: upstream filtering in
+    ``batdetect-service/main.py`` has already discarded anything that
+    isn't a confident bat call, so every row that reaches this point
+    is tier 1 (permanent archive + Google Drive mirror).
 
-    Tier logic is AND-gated on both scores:
-      * tier 1: any detection with prediction_confidence >= 0.7 AND
-        det_prob >= 0.5
-      * tier 2: any detection with prediction_confidence >= 0.4 AND
-        det_prob >= 0.5
-      * tier 3: metadata only (no WAV written)
+    An empty input still returns tier 3 (metadata only) as a defensive
+    default so a degenerate pipeline state can't overwrite disk.
     """
     rows = list(rows_data)
     if not rows:
         return 3
-
-    def _qualifies(conf_min: float, det_min: float) -> bool:
-        for det, pred in rows:
-            if pred is None:
-                continue
-            if (
-                pred["prediction_confidence"] >= conf_min
-                and det.get("det_prob", 0.0) >= det_min
-            ):
-                return True
-        return False
-
-    if _qualifies(TIER1_CONFIDENCE_MIN, TIER1_DET_PROB_MIN):
-        return 1
-    if _qualifies(TIER2_CONFIDENCE_MIN, TIER2_DET_PROB_MIN):
-        return 2
-    return 3
+    return 1
 
 
 def pick_class_folder(

@@ -287,3 +287,76 @@ rclone tree "gdrive:Bat Recordings from pi01"
 ```bash
 docker compose --profile ast up -d ast-service
 ```
+
+---
+
+## Follow-up (same-day, late evening 2026-04-20 → 2026-04-21)
+
+### Single-gate detection model
+
+Post-deployment review showed the tiered model was confusing advisors:
+the dashboard feed displayed all bat rows (including tier 3 metadata
+only) while only tier 1 was archived and uploaded to Google Drive.
+Three different definitions of "real detection" across three surfaces.
+
+**The rule now**: one gate, one story.
+
+| Check | Threshold | Source |
+| --- | --- | --- |
+| BatDetect2 `det_prob` | `≥ 0.3` | `DETECTION_THRESHOLD` (compose env) |
+| Classifier `prediction_confidence` | `≥ 0.6` | `MIN_PREDICTION_CONF` (compose env) |
+
+If a detection clears **both**, it:
+
+1. gets a row in Postgres
+2. syncs to Firestore → visible in the dashboard feed
+3. has its WAV archived to `/bat_audio/tier1_permanent/<CLASS>/`
+4. uploads to Google Drive on the next sync cycle
+
+If it fails either gate, it is dropped silently — no row, no WAV, no
+dashboard card. Every downstream consumer sees the same set.
+
+### Bug fix along the way
+
+`_run_batdetect_with_classifier()` was calling `bat_api.process_audio(audio)`
+**without** the config dict, so `DETECTION_THRESHOLD=0.5` from earlier
+in the day was never actually applied — BatDetect2 ran at its built-in
+default of 0.01 and the only thing holding low-prob noise out of the DB
+was the secondary `CLASSIFIER_DET_THRESHOLD=0.3` filter. Fixed: the
+config is now passed, so the primary threshold works.
+
+### Tier thresholds are dead code
+
+`TIER1_*`, `TIER2_*`, `TIER4_*` constants in
+`edge/batdetect-service/src/storage.py` are kept at zero/unused
+because filtering now happens upstream in `main.py` before
+`determine_tier()` ever sees a row. `determine_tier()` always returns
+`1` on any non-empty input. Kept the scaffolding so we can reintroduce
+a review-only tier later without restructuring.
+
+### Threshold calibration
+
+`DETECTION_THRESHOLD` dropped from 0.5 → **0.3**. BatDetect2 UK-trained
+genuinely cannot score NA bats above ~0.4 `det_prob`, a limitation
+flagged in `BATDETECT2_TRAINING.md`. Keeping 0.5 meant ~0 calls
+archived even with the new confidence gate. The quality control is
+primarily in `MIN_PREDICTION_CONF=0.6` against the NA-trained
+classifier head.
+
+### Historical cleanup
+
+Purged rows below the new gate from both stores:
+
+- Postgres: 42 rows deleted, 49 remain.
+- Firestore `batDetections`: 42 docs deleted, 49 remain.
+
+Dashboard now shows only rows that would survive today's gate, so the
+advisor's "what's actually a real call?" question has one honest
+answer.
+
+### Startup log line to grep
+
+```
+Monitoring started — batdetect_threshold=0.3, min_pred_conf=0.6, segment=15s
+```
+
