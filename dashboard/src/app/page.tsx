@@ -279,10 +279,14 @@ export default function Dashboard() {
         <StatsCards
           classifications={classifications}
           batDetections={batDetections}
+          batDetectionsTotal={deviceStatus?.batDetectionsTotal}
         />
 
         {/* Bat Detection Feed — primary content */}
-        <BatDetectionFeed detections={batDetections} />
+        <BatDetectionFeed
+          detections={batDetections}
+          totalDetections={deviceStatus?.batDetectionsTotal}
+        />
 
         {/* Device Health */}
         <DeviceHealth

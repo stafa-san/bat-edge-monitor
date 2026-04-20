@@ -10,9 +10,14 @@ const GROUP_LABELS: Record<string, { common: string; desc: string }> = {
 
 interface BatDetectionFeedProps {
   detections: any[];
+  // Authoritative total from the edge device (all rows in Postgres).
+  // The ``detections`` array is capped at whatever the Firestore query
+  // limit is (currently 50) so we show both numbers to avoid
+  // undercounting in the summary.
+  totalDetections?: number;
 }
 
-export function BatDetectionFeed({ detections }: BatDetectionFeedProps) {
+export function BatDetectionFeed({ detections, totalDetections }: BatDetectionFeedProps) {
   // Group detections by predicted class for the summary bar
   const groupCounts: Record<string, number> = {};
   detections.forEach((d) => {
@@ -30,7 +35,9 @@ export function BatDetectionFeed({ detections }: BatDetectionFeedProps) {
         </h2>
         {detections.length > 0 && (
           <span className="text-sm text-purple-600 font-medium">
-            {detections.length} detection{detections.length !== 1 ? "s" : ""}
+            {typeof totalDetections === "number" && totalDetections > detections.length
+              ? `last ${detections.length} of ${totalDetections.toLocaleString()}`
+              : `${detections.length} detection${detections.length !== 1 ? "s" : ""}`}
           </span>
         )}
       </div>
