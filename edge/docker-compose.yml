@@ -44,7 +44,12 @@ services:
       # would force BatDetect2 to do its own resample, an extra step for
       # no gain — all bat calls of interest are <120 kHz.
       - SAMPLE_RATE=256000
-      - DETECTION_THRESHOLD=0.5
+      # BatDetect2 UK-trained model can't score NA bats above ~0.4
+      # det_prob, so 0.3 is the realistic base-detector floor. Quality
+      # control is primarily enforced by MIN_PREDICTION_CONF against
+      # the NA-trained classifier head.
+      - DETECTION_THRESHOLD=0.3
+      - MIN_PREDICTION_CONF=${MIN_PREDICTION_CONF:-0.6}
       - SEGMENT_DURATION=15
       - HPF_ENABLED=${HPF_ENABLED:-true}
       - HPF_CUTOFF_HZ=${HPF_CUTOFF_HZ:-16000}

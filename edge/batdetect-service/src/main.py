@@ -131,36 +131,54 @@ def _run_batdetect_legacy(audio_path, config, hpf_sos=None):
 
 
 def _run_batdetect_with_classifier(
-    audio_path, classifier_model, classifier_ckpt, hpf_sos=None,
+    audio_path, classifier_model, classifier_ckpt, config, hpf_sos=None,
+    min_pred_conf: float = 0.6,
 ):
     """New path — process_audio gives us features for the classifier head.
 
-    Returns a list of (detection_dict, prediction_dict_or_None) tuples,
-    filtered to det_prob > CLASSIFIER_DET_THRESHOLD (matches training).
+    Returns a list of (detection_dict, prediction_dict) tuples that passed
+    BOTH the BatDetect2 base threshold (from ``config['detection_threshold']``)
+    AND the classifier confidence gate (``min_pred_conf``). Anything below
+    either threshold is dropped — no DB row, no WAV, no dashboard entry.
+
     ``hpf_sos`` (optional) is a precomputed SOS Butterworth HPF applied
     before BatDetect2 sees the audio.
     """
     audio = bat_api.load_audio(audio_path)
     if hpf_sos is not None:
         audio = _apply_hpf(audio, hpf_sos)
-    detections, features, _ = bat_api.process_audio(audio)
+    # Pass config so BatDetect2 actually honours DETECTION_THRESHOLD. Without
+    # this, process_audio uses its built-in default of 0.01 and everything
+    # leaks through.
+    detections, features, _ = bat_api.process_audio(audio, config=config)
     if not detections:
         return []
 
-    mask = np.array([d.get("det_prob", 0.0) > CLASSIFIER_DET_THRESHOLD for d in detections])
+    # Secondary classifier-side detection gate. Kept as a safety net in
+    # case someone sets DETECTION_THRESHOLD below CLASSIFIER_DET_THRESHOLD.
+    mask = np.array([d.get("det_prob", 0.0) >= CLASSIFIER_DET_THRESHOLD for d in detections])
     if not mask.any():
         return []
 
     high_conf_dets = [d for d, m in zip(detections, mask) if m]
     high_conf_feats = features[mask]
     preds = classify(high_conf_feats, classifier_model, classifier_ckpt)
-    return list(zip(high_conf_dets, preds))
+
+    # Final "is this actually a confident bat call?" gate. Anything that
+    # doesn't clear this is dropped silently — the dashboard feed, the
+    # WAV archive, and the Google Drive mirror all share this same
+    # definition of "real detection."
+    return [
+        (d, p) for d, p in zip(high_conf_dets, preds)
+        if p["prediction_confidence"] >= min_pred_conf
+    ]
 
 
 async def main():
     device_name = os.getenv("DEVICE_NAME", "AudioMoth")
     sample_rate = int(os.getenv("SAMPLE_RATE", "192000"))
     threshold = float(os.getenv("DETECTION_THRESHOLD", "0.3"))
+    min_pred_conf = float(os.getenv("MIN_PREDICTION_CONF", "0.6"))
     segment_duration = int(os.getenv("SEGMENT_DURATION", "5"))
     enable_classifier = os.getenv("ENABLE_GROUPS_CLASSIFIER", "false").lower() == "true"
     enable_storage_tiering = os.getenv("ENABLE_STORAGE_TIERING", "false").lower() == "true"
@@ -214,7 +232,10 @@ async def main():
 
     conn = get_db_connection()
 
-    print(f"[BAT] Monitoring started — batdetect_threshold={threshold}, segment={segment_duration}s")
+    print(
+        f"[BAT] Monitoring started — batdetect_threshold={threshold}, "
+        f"min_pred_conf={min_pred_conf}, segment={segment_duration}s"
+    )
 
     segment_count = 0
 
@@ -236,8 +257,8 @@ async def main():
             # Run detection (+ optionally classification)
             if enable_classifier:
                 rows_data = _run_batdetect_with_classifier(
-                    audio_path, classifier_model, classifier_ckpt,
-                    hpf_sos=hpf_sos,
+                    audio_path, classifier_model, classifier_ckpt, config,
+                    hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
                 )
             else:
                 rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
