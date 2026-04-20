@@ -3,7 +3,7 @@
 After the groups classifier produces predictions for a captured WAV, this
 module decides:
 
-  * Which retention tier the file belongs in (1–4)
+  * Which retention tier the file belongs in (1–3)
   * Which species subfolder to drop tier 1 into when a single file
     contains multiple predicted classes
   * Where on disk to write the archived copy (one-shot move, no
@@ -15,6 +15,11 @@ The thresholds in this module are **tunable**. Dr. Johnson should edit
 them here directly — no code hunting required. After any change, bump
 ``THRESHOLDS_LAST_TUNED`` so we can correlate training / evaluation runs
 with whatever rules produced the data.
+
+Tiers now require BOTH strong classifier confidence AND strong BatDetect2
+base detection probability. This AND-gate is what keeps broadband fan /
+wind noise from landing in the permanent archive even when the classifier
+is forced to pick a closest-match NA class.
 
 See ``DATA_FLYWHEEL.md`` (root of repo) for the broader architecture.
 """
@@ -28,21 +33,24 @@ from typing import Iterable, List, Optional, Tuple
 # -----------------------------------------------------------------------------
 # TUNABLE TIER THRESHOLDS
 # -----------------------------------------------------------------------------
-# TODO: review with Dr. Johnson once we have 2+ weeks of production data to see
-# what confidence band he considers "keep forever" worthy.
 
-THRESHOLDS_LAST_TUNED = "2026-04-17"
+THRESHOLDS_LAST_TUNED = "2026-04-20"
 
-TIER1_CONFIDENCE_MIN = 0.9     # rare-species detection at or above this = permanent
-TIER2_CONFIDENCE_MIN = 0.5     # any detection at or above this = 30-day retention
-TIER4_CONFIDENCE_MAX = 0.3     # every detection below this = anomaly tier
+# Tier 1: permanent archive + gdrive upload
+TIER1_CONFIDENCE_MIN = 0.7     # classifier prediction_confidence
+TIER1_DET_PROB_MIN = 0.5       # BatDetect2 det_prob
 
-# Which predicted classes are treated as rare enough to keep forever
-# at high confidence. Ordered by descending rarity — used for multi-class
-# folder placement.
+# Tier 2: 30-day local retention
+TIER2_CONFIDENCE_MIN = 0.4
+TIER2_DET_PROB_MIN = 0.5
+
+# No anomaly tier writes — tier 4 kept as a label in TIER_DIRS for
+# backwards compatibility but determine_tier() never returns 4.
+TIER4_CONFIDENCE_MAX = 0.0
+
 CLASS_PRIORITY_ORDER: Tuple[str, ...] = ("PESU", "LACI", "LABO", "MYSP", "EPFU_LANO")
-RARE_CLASSES = {"PESU", "LACI", "LABO"}
-COMMON_CLASSES = {"EPFU_LANO", "MYSP"}
+RARE_CLASSES = {"PESU", "LACI", "LABO", "MYSP", "EPFU_LANO"}
+COMMON_CLASSES: set = set()
 
 # Tier retention periods. Tier 1 is permanent (no expiry); tier 3 never
 # writes a WAV, so it has no expiry either.
@@ -60,37 +68,46 @@ TIER_DIRS = {
 # Pure functions — no filesystem side effects
 # -----------------------------------------------------------------------------
 
-def determine_tier(predictions: Iterable[dict]) -> int:
-    """Pick a storage tier from a list of per-detection prediction dicts.
+def determine_tier(rows_data: Iterable[Tuple[dict, Optional[dict]]]) -> int:
+    """Pick a storage tier from (detection, prediction) tuples.
 
-    Each dict is expected to expose ``predicted_class`` and
-    ``prediction_confidence`` (the classifier head's softmax max).
+    Each tuple is ``(detection_dict, prediction_dict_or_None)`` where
+    ``detection_dict`` has a ``det_prob`` key and ``prediction_dict`` (when
+    present) has ``predicted_class`` and ``prediction_confidence``.
 
-    Ordering matters — tier 4 absorbs both empty / anomalous input before
-    we look for high-confidence rare species.
+    Tier logic is AND-gated on both scores:
+      * tier 1: any detection with prediction_confidence >= 0.7 AND
+        det_prob >= 0.5
+      * tier 2: any detection with prediction_confidence >= 0.4 AND
+        det_prob >= 0.5
+      * tier 3: metadata only (no WAV written)
     """
-    preds = list(predictions)
+    rows = list(rows_data)
+    if not rows:
+        return 3
 
-    if not preds:
-        return 4
-    if all(p["prediction_confidence"] < TIER4_CONFIDENCE_MAX for p in preds):
-        return 4
+    def _qualifies(conf_min: float, det_min: float) -> bool:
+        for det, pred in rows:
+            if pred is None:
+                continue
+            if (
+                pred["prediction_confidence"] >= conf_min
+                and det.get("det_prob", 0.0) >= det_min
+            ):
+                return True
+        return False
 
-    if any(
-        p["predicted_class"] in RARE_CLASSES
-        and p["prediction_confidence"] >= TIER1_CONFIDENCE_MIN
-        for p in preds
-    ):
+    if _qualifies(TIER1_CONFIDENCE_MIN, TIER1_DET_PROB_MIN):
         return 1
-
-    if any(p["prediction_confidence"] >= TIER2_CONFIDENCE_MIN for p in preds):
+    if _qualifies(TIER2_CONFIDENCE_MIN, TIER2_DET_PROB_MIN):
         return 2
-
-    # Some detections, but none confident enough to keep the audio.
     return 3
 
 
-def pick_class_folder(tier: int, predictions: Iterable[dict]) -> Optional[str]:
+def pick_class_folder(
+    tier: int,
+    rows_data: Iterable[Tuple[dict, Optional[dict]]],
+) -> Optional[str]:
     """Choose the species subfolder for a tier-1 file.
 
     When a single WAV contains multiple predicted classes we route it to
@@ -102,7 +119,11 @@ def pick_class_folder(tier: int, predictions: Iterable[dict]) -> Optional[str]:
     if tier != 1:
         return None
 
-    classes_present = {p["predicted_class"] for p in predictions}
+    classes_present = {
+        pred["predicted_class"]
+        for _, pred in rows_data
+        if pred is not None
+    }
     for cls in CLASS_PRIORITY_ORDER:
         if cls in classes_present:
             return cls

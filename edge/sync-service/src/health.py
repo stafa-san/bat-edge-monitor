@@ -120,6 +120,30 @@ def check_audiomoth(conn) -> bool:
         return False
 
 
+def get_audiomoth_hw_sample_rate() -> int | None:
+    """Read the AudioMoth's native hardware sample rate from /proc/asound.
+
+    Parses the stream0 file for the AudioMoth card to find the supported
+    rate.  Returns the rate in Hz (e.g. 384000) or None if unavailable.
+    """
+    try:
+        with open("/host/asound/cards", "r") as f:
+            cards_text = f.read()
+        # Find the card number for AudioMoth
+        for line in cards_text.splitlines():
+            if "AudioMoth" in line:
+                card_num = line.strip().split()[0]
+                stream_path = f"/host/asound/card{card_num}/stream0"
+                with open(stream_path, "r") as sf:
+                    for sline in sf:
+                        if "Rates:" in sline:
+                            rate_str = sline.split("Rates:")[1].strip()
+                            return int(rate_str)
+        return None
+    except Exception:
+        return None
+
+
 def get_db_stats(conn) -> dict:
     """Return database size, row counts, and unsynced count."""
     out = {
@@ -179,6 +203,7 @@ def collect_all_metrics(conn) -> dict:
     disk_total, disk_used = get_disk_usage()
     internet_ok, internet_latency = check_internet()
     audiomoth_ok = check_audiomoth(conn)
+    audiomoth_hw_rate = get_audiomoth_hw_sample_rate() if audiomoth_ok else None
     db = get_db_stats(conn)
     errors = get_error_count(conn)
 
@@ -195,6 +220,7 @@ def collect_all_metrics(conn) -> dict:
         "internet_connected": internet_ok,
         "internet_latency_ms": internet_latency,
         "audiomoth_connected": audiomoth_ok,
+        "audiomoth_hw_sample_rate": audiomoth_hw_rate,
         "capture_errors_1h": errors,
         **db,
     }
