@@ -360,3 +360,57 @@ answer.
 Monitoring started — batdetect_threshold=0.3, min_pred_conf=0.6, segment=15s
 ```
 
+---
+
+## Follow-up 2 (same-night, post-manual-WAV-review)
+
+### The 6:59 PM false positive that prompted another iteration
+
+Manual spot-check of a LACI detection at pred_conf 0.696 revealed the
+WAV was essentially silent (RMS 0.0012, uniform spectrogram, no
+echolocation pulse visible). The classifier had coerced broadband
+noise into the closest-match class (LACI) because its softmax always
+sums to 1 — it cannot say "this isn't a bat."
+
+### What changed
+
+1. **`DETECTION_THRESHOLD` 0.3 → 0.5** — matches the training-time
+   filter documented in `BATDETECT2_TRAINING.md` section 1. Classifier
+   features now stay in the training distribution.
+2. **Audio validator added** as the third pipeline gate. Three
+   signal-processing checks (RMS floor, bat-band SNR, temporal burst)
+   catch noise-coerced classifications that the classifier can't. See
+   [`AUDIO_VALIDATOR.md`](AUDIO_VALIDATOR.md) for the full spec.
+3. **Clean slate** — all 50 existing `bat_detections` rows + matching
+   Firestore docs + local `/bat_audio/tier1_permanent/` WAVs + gdrive
+   mirror contents were deleted. Every detection on the dashboard from
+   this point on has cleared all three gates.
+
+### Expected volume
+
+Per the training doc's "5-15% of BD emissions survive det_prob >= 0.5
+on Ohio bats" and the validator culling the stragglers, **1-5
+detections/day** is the realistic rate. Lower volume, higher
+confidence — the thesis-defensible configuration.
+
+### Pipeline log sequence to grep for after this change
+
+```
+[BAT] Initializing audio capture: AudioMoth @ 256000 Hz
+[BAT] HPF enabled: cutoff=16000 Hz, order=4 (applied at 256000 Hz, analysis-only, archived WAV unchanged)
+[BAT] Classifier ready: ['EPFU_LANO', 'LABO', 'LACI', 'MYSP', 'PESU']
+[BAT] Storage tiering enabled — site_id=pi01, bat_audio_dir=/bat_audio
+[BAT] Audio validator enabled — min_rms=0.005, min_snr_db=10.0, min_burst_ratio=3.0
+[BAT] Monitoring started — batdetect_threshold=0.5, min_pred_conf=0.6, segment=15s
+```
+
+Validator rejections show as:
+
+```
+[BAT] #42 | rejected by validator:rms_too_low(0.0023)
+```
+
+Tune thresholds via `VALIDATOR_MIN_RMS`, `VALIDATOR_MIN_SNR_DB`,
+`VALIDATOR_MIN_BURST_RATIO` in `edge/docker-compose.yml`. No rebuild
+needed — `docker compose up -d batdetect-service` picks them up.
+

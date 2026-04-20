@@ -8,9 +8,14 @@ Written: 2026-04-21 (late evening, post single-gate-model commit —
 `MIN_PREDICTION_CONF=0.6`, `DETECTION_THRESHOLD=0.3`).
 
 Status: the pipeline is live, capturing confident detections to Postgres
-→ Firestore → `/bat_audio/tier1_permanent/<CLASS>/` → Google Drive. But
-there's a known bias, documented below, that we want deployment data
-in hand before tuning further.
+→ Firestore → `/bat_audio/tier1_permanent/<CLASS>/` → Google Drive.
+
+**Update (late 2026-04-20):** after a manual WAV review surfaced a
+silent-file false positive, we raised `DETECTION_THRESHOLD` to 0.5 to
+match training, added the audio-level validator described in
+[`AUDIO_VALIDATOR.md`](AUDIO_VALIDATOR.md), and wiped the archive.
+Several sections of this playbook now describe *completed* work — see
+the "✅ implemented" markers below.
 
 ---
 
@@ -222,28 +227,21 @@ Two additions worth making before the next tuning decision. Both are
 small, both make tuning *from data* possible instead of *by
 intuition*.
 
-### 3.1 Bring back tier-3 metadata-only logging
+### 3.1 Bring back tier-3 metadata-only logging — **superseded**
 
-Current state: if a detection fails either the `DETECTION_THRESHOLD`
-or the `MIN_PREDICTION_CONF` gate, it's dropped silently. No record
-anywhere.
+After the 2026-04-20 follow-up, we chose a different direction: an
+audio-level validator (see [`AUDIO_VALIDATOR.md`](AUDIO_VALIDATOR.md))
+that actually rejects noise rather than logging it. Tier-3 metadata
+logging remains a reasonable future enhancement if we later want a
+diagnostic record of what the validator rejected, but the user
+problem ("my gdrive is full of noise") needed a filter, not a
+counter.
 
-Problem: tomorrow when we ask "what would happen if I lowered
-`MIN_PREDICTION_CONF` to 0.5?" there is no record to check against.
-
-Proposed change (small):
-
-- In `batdetect-service/main.py`, after running the classifier but
-  before the single-gate filter, insert *every* classified detection
-  into Postgres with `storage_tier = 3`.
-- Rows with `storage_tier = 3` do **not** sync to Firestore and do
-  **not** archive a WAV — so dashboard and gdrive stay clean.
-- The local DB gets a full record of what BatDetect2 emitted and how
-  the classifier scored it, regardless of thresholds.
-- Tier-3 rows already auto-expire after 7 days via
-  `sync-service/main.py:cleanup_old_data()`.
-
-Cost: ~1 MB of DB growth per 1,000 tier-3 rows. Negligible.
+**If reintroduced later**, the shape would be the same as described
+in this section — add storage_tier = 3 rows for every classified
+detection that didn't make it past all three gates, with the
+rejection reason stored as a new column. Tier-3 rows already
+auto-expire after 7 days via `sync-service/main.py:cleanup_old_data()`.
 
 ### 3.2 Nightly diagnostic summary
 
@@ -310,22 +308,33 @@ and gives us a classifier that knows what THIS site sounds like.
 
 ## 5. Action items, prioritized
 
-1. **Wait 24–48 h.** Let the pipeline collect a baseline.
+Original plan (2026-04-20 afternoon):
+
+1. ~~Wait 24–48 h to collect a baseline~~ **Superseded** — a single
+   manual WAV review that evening was evidence enough that
+   `DETECTION_THRESHOLD=0.3` was too permissive.
 2. **Ask Dr. Johnson to raise AudioMoth hardware HPF from 8 kHz →
-   16 kHz.** (From `SESSION_NOTES_2026-04-20.md`'s recommendations.)
-   Does not require software changes. Makes archived WAVs cleaner.
+   16 kHz.** Still open. Now quality-of-life rather than
+   correctness — the validator protects the archive regardless of
+   hardware HPF.
 3. Run the six diagnostic queries each morning (section 2) and log
-   what each one says.
+   what each one says. Still the right thing to do.
 4. Spot-check 3–5 gdrive WAVs per species in Audacity (section 2.5).
-5. Decide after 48 h:
-   - Species mix + temporal pattern plausible → keep thresholds, start
-     collecting more data for the site retrain (section 4)
-   - Implausible (e.g. LACI still dominates, no sunset peak) →
-     raise `DETECTION_THRESHOLD` to 0.5 to match training, accept
-     lower volume, revisit in another week
-6. Once we decide on thresholds: implement tier-3 metadata logging
-   (section 3.1) so future threshold tuning is data-driven instead of
-   guesses.
+   Still the right thing to do.
+5. ~~Decide after 48 h whether to raise `DETECTION_THRESHOLD` to 0.5~~
+   **✅ Done 2026-04-20 evening.** See
+   [`AUDIO_VALIDATOR.md`](AUDIO_VALIDATOR.md) and
+   `SESSION_NOTES_2026-04-20.md` Follow-up 2.
+6. ~~Implement tier-3 metadata logging~~ **Superseded** by the
+   validator — see section 3.1 above.
+
+Next up:
+
+7. Watch the validator's rejection reasons over the first week.
+   Tune `VALIDATOR_MIN_RMS` etc. if we're losing real calls.
+8. Start section 4.1 (deployment-site label collection) as soon as
+   tier-1 WAVs accumulate. Target: 50+ labeled per species before
+   attempting a retrain.
 
 ## 6. One-line reminder
 
