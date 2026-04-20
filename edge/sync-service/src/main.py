@@ -57,7 +57,7 @@ def sync_classifications(conn, db):
             FROM classifications
             WHERE synced = FALSE
             ORDER BY sync_time ASC
-            LIMIT 500
+            LIMIT 100
         """)
         rows = cur.fetchall()
 
@@ -117,7 +117,7 @@ def sync_bat_detections(conn, db):
             FROM bat_detections
             WHERE synced = FALSE
             ORDER BY detection_time ASC
-            LIMIT 500
+            LIMIT 100
         """)
         rows = cur.fetchall()
 
@@ -181,7 +181,7 @@ def sync_environmental_readings(conn, db):
             FROM environmental_readings
             WHERE synced = FALSE
             ORDER BY recorded_at ASC
-            LIMIT 500
+            LIMIT 100
         """)
         rows = cur.fetchall()
 
