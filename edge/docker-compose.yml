@@ -1,5 +1,10 @@
 services:
   ast-service:
+    # Disabled — AST produces ~5 AudioSet labels per sample, the main
+    # source of Firestore write-quota pressure. We no longer use the
+    # "Acoustic Environment" dashboard section it feeds. Re-enable by
+    # running `docker compose --profile ast up -d ast-service`.
+    profiles: ["ast"]
     build: ./ast-service
     devices:
       - /dev/snd:/dev/snd
