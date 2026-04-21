@@ -21,6 +21,26 @@ from src.audio_validator import is_likely_bat_call
 from src.classifier import classify, load_groups_classifier
 
 
+def _format_bd_stats(stats: dict | None) -> str:
+    """Compact log tail describing what BatDetect2 emitted this segment.
+
+    Lets the "No bat calls detected" heartbeat distinguish these three
+    cases at a glance:
+        bd_raw=0                              — detector saw nothing
+        bd_raw=3 max=0.22                     — weak sub-user signal
+        bd_raw=8 max=0.48 user_pass=0         — near-misses, tune down
+    """
+    if not stats or stats.get("raw_count", 0) == 0:
+        return " (bd_raw=0)"
+    parts = [f"bd_raw={stats['raw_count']}", f"max={stats['max_det_prob']:.2f}"]
+    if "count_above_user" in stats:
+        parts.append(f"user_pass={stats['count_above_user']}")
+    top = stats.get("top_class")
+    if top:
+        parts.append(f"top={top[:18]}")
+    return " (" + " ".join(parts) + ")"
+
+
 def _compute_audio_stats(wav_path: str) -> tuple[float | None, float | None]:
     """Return ``(rms, peak)`` in 0..1 normalised amplitude, or ``(None, None)``.
 
@@ -155,35 +175,63 @@ def _run_batdetect_legacy(audio_path, config, hpf_sos=None):
     return [(d, None) for d in detections]
 
 
+DIAGNOSTIC_BD_THRESHOLD = 0.1  # let sub-threshold emissions through for logging
+
+
 def _run_batdetect_with_classifier(
     audio_path, classifier_model, classifier_ckpt, config, hpf_sos=None,
     min_pred_conf: float = 0.6,
     validator_cfg: dict | None = None,
+    user_threshold: float = 0.5,
 ):
-    """Returns ``(rows_data, rejection_reason)``.
+    """Returns ``(rows_data, rejection_reason, stats)``.
 
     ``rows_data`` is the list of surviving ``(detection, prediction)``
-    tuples that will become Postgres rows. When empty, ``rejection_reason``
-    names the gate that dropped the segment — either a classifier-level
-    gate ("batdetect2_no_detections", "classifier_all_below_conf") or
-    an audio-validator reason string. ``None`` when we didn't even get
-    to the validator.
+    tuples that will become Postgres rows. ``rejection_reason`` names
+    the gate that dropped the segment when ``rows_data`` is empty.
+    ``stats`` is always populated and carries per-segment diagnostic
+    counters so the caller can log what BatDetect2 saw even when
+    nothing passed the pipeline. Keys:
+        raw_count           — total detections above DIAGNOSTIC_BD_THRESHOLD
+        max_det_prob        — highest det_prob seen this segment (0.0 if none)
+        count_above_user    — detections >= user_threshold (pre-classifier)
+        top_class           — BD's top class name (UK label), or None
     """
+    stats = {
+        "raw_count": 0,
+        "max_det_prob": 0.0,
+        "count_above_user": 0,
+        "top_class": None,
+    }
+
     audio = bat_api.load_audio(audio_path)
     if hpf_sos is not None:
         audio = _apply_hpf(audio, hpf_sos)
-    # Pass config so BatDetect2 actually honours DETECTION_THRESHOLD. Without
-    # this, process_audio uses its built-in default of 0.01 and everything
-    # leaks through.
-    detections, features, _ = bat_api.process_audio(audio, config=config)
-    if not detections:
-        return [], "batdetect2_no_detections"
+    # Query BatDetect2 at a permissive diagnostic threshold so we can
+    # observe sub-user-threshold emissions for troubleshooting. The
+    # user-facing DETECTION_THRESHOLD is enforced below in the mask,
+    # so downstream pipeline behaviour is unchanged.
+    diag_config = dict(config)
+    diag_config["detection_threshold"] = min(DIAGNOSTIC_BD_THRESHOLD, user_threshold)
+    detections, features, _ = bat_api.process_audio(audio, config=diag_config)
 
-    # Secondary classifier-side detection gate. Kept as a safety net in
-    # case someone sets DETECTION_THRESHOLD below CLASSIFIER_DET_THRESHOLD.
-    mask = np.array([d.get("det_prob", 0.0) >= CLASSIFIER_DET_THRESHOLD for d in detections])
+    if detections:
+        probs = [d.get("det_prob", 0.0) for d in detections]
+        stats["raw_count"] = len(detections)
+        stats["max_det_prob"] = float(max(probs))
+        stats["count_above_user"] = sum(1 for p in probs if p >= user_threshold)
+        top = max(detections, key=lambda d: d.get("det_prob", 0.0))
+        stats["top_class"] = top.get("class")
+
+    if not detections:
+        return [], "batdetect2_no_detections", stats
+
+    # User-threshold gate — the REAL threshold that matches training
+    # and what the classifier expects to see.
+    threshold = max(user_threshold, CLASSIFIER_DET_THRESHOLD)
+    mask = np.array([d.get("det_prob", 0.0) >= threshold for d in detections])
     if not mask.any():
-        return [], "all_below_classifier_det_threshold"
+        return [], "all_below_user_threshold", stats
 
     high_conf_dets = [d for d, m in zip(detections, mask) if m]
     high_conf_feats = features[mask]
@@ -195,7 +243,7 @@ def _run_batdetect_with_classifier(
         if p["prediction_confidence"] >= min_pred_conf
     ]
     if not kept:
-        return [], "all_below_min_pred_conf"
+        return [], "all_below_min_pred_conf", stats
 
     # Audio-level validator — "is this actually a bat call?"
     # Runs only when the classifier has at least one confident pick
@@ -211,9 +259,9 @@ def _run_batdetect_with_classifier(
             min_burst_ratio=validator_cfg.get("min_burst_ratio", 3.0),
         )
         if not ok:
-            return [], f"validator:{reason}"
+            return [], f"validator:{reason}", stats
 
-    return kept, None
+    return kept, None, stats
 
 
 async def main():
@@ -334,11 +382,13 @@ async def main():
 
             # Run detection (+ optionally classification)
             rejection_reason = None
+            bd_stats = None
             if enable_classifier:
-                rows_data, rejection_reason = _run_batdetect_with_classifier(
+                rows_data, rejection_reason, bd_stats = _run_batdetect_with_classifier(
                     audio_path, classifier_model, classifier_ckpt, config,
                     hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
                     validator_cfg=validator_cfg,
+                    user_threshold=threshold,
                 )
             else:
                 rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
@@ -435,9 +485,14 @@ async def main():
                 # see what's being filtered; pure no-detection heartbeats
                 # stay at 1-per-10-segments to keep the log quiet.
                 if rejection_reason and rejection_reason.startswith("validator:"):
-                    print(f"[BAT] #{segment_count} | rejected by {rejection_reason}")
+                    bd_tail = _format_bd_stats(bd_stats)
+                    print(f"[BAT] #{segment_count} | rejected by {rejection_reason}{bd_tail}")
                 elif segment_count % 10 == 0:
-                    print(f"[BAT] #{segment_count} | No bat calls detected (listening...)")
+                    # Listening heartbeat: include BD diagnostic stats so
+                    # "detector saw nothing" is distinguishable from
+                    # "detector saw weak sub-threshold signal."
+                    bd_tail = _format_bd_stats(bd_stats)
+                    print(f"[BAT] #{segment_count} | No bat calls detected{bd_tail}")
 
             # Clean up temp file
             await asyncio.sleep(0.5)
