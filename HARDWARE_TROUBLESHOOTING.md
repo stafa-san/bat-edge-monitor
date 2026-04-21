@@ -1,0 +1,567 @@
+# Hardware Troubleshooting Playbook
+
+For when the pipeline looks healthy (services green, AudioMoth "Capturing",
+no errors) but **detections stay at zero**. This document captures the
+full diagnostic arc from 2026-04-20 evening → 2026-04-21 late afternoon,
+when the deployed Pi produced 0 bat detections for 18+ hours despite
+every software dashboard being green.
+
+Use this as a reference playbook when:
+
+- Standing up a **new Pi / AudioMoth rig** (this covers the power and
+  hardware-config choices you need to get right before software matters).
+- Diagnosing a **running rig that stopped detecting**.
+- Explaining to an advisor or collaborator **why software isn't always
+  the culprit**.
+
+Related docs: [`BATDETECT2_TRAINING.md`](BATDETECT2_TRAINING.md) for the
+classifier, [`AUDIO_VALIDATOR.md`](AUDIO_VALIDATOR.md) for the third
+detection gate, [`DETECTION_TUNING_PLAYBOOK.md`](DETECTION_TUNING_PLAYBOOK.md)
+for classifier-threshold tuning, [`SESSION_NOTES_2026-04-20.md`](SESSION_NOTES_2026-04-20.md)
+for the earlier day of changes that preceded this one.
+
+---
+
+## TL;DR
+
+- A bat-monitoring pipeline with 0 detections has three possible failure
+  modes: (1) no bats present, (2) something wrong with the detector/model,
+  (3) something wrong with the **hardware upstream of the detector**.
+- The dashboard is unreliable at distinguishing these. All three produce
+  identical "service up, no rows, no errors."
+- This session found two stacked hardware problems: **Pi 5 undervoltage**
+  (wrong power bank) and **AudioMoth gain too low** (advisor's CUSTOM
+  mode config hadn't fully applied).
+- After both were fixed, the mic jumped from RMS ≈ 0.001 (silent) to
+  RMS ≈ 0.006 (normal outdoor ambient) and the pipeline became usable.
+
+---
+
+## Symptom → root-cause reference table
+
+| Symptom | Likely causes | First check |
+| --- | --- | --- |
+| All dashboard cards green, 0 detections, `audio_levels.rms < 0.002` | Mic silent: undervolt, gain, obstruction, dead mic | Run diagnostic capture (section 4.1) + verify 5 V rail |
+| Dashboard shows **Undervoltage NOW** banner | Power supply can't deliver 5.1 V @ 5 A | Swap PSU (section 5.1) |
+| Dashboard shows **Undervoltage since boot**, no banner now | Transient voltage sag — usually a marginal PSU under burst load | Swap PSU if it recurs |
+| 5 V rail reads **< 4.8 V** | PSU or cable problem | Swap cable first, then PSU |
+| Pi rebooted unexpectedly | PSU browned out hard enough to drop the rail below reset threshold | Swap PSU — don't ignore this |
+| RMS jumps briefly (tap test) then settles back to 0.001 | Gain config not persisted on the AudioMoth | Unplug AudioMoth 10 s, replug, recheck |
+| RMS flat at mic-noise-floor even with noise | Mic element dead, port obstructed, or wrong gain setting | Sequential checks in section 5.2 |
+| Detections resume then stop again | Weather (< 10 °C), battery drain, intermittent cable | Cross-check HOBO temperature + power log |
+
+---
+
+## The incident, in order
+
+A chronicle so future-you recognizes the pattern.
+
+**2026-04-20 ~23:30** (previous session end): threshold tightening to
+`DETECTION_THRESHOLD=0.5`, audio validator added, archive wiped.
+Expected volume was stated as "1–5 detections/day." Dashboard looked
+green.
+
+**2026-04-21 ~11:00** (18 hrs later): user reports **0 detections ever
+since the reset**. Dashboard still green. Services all up.
+
+**~11:15** — first diagnostic sweep found:
+
+- `docker ps`: batdetect-service up, no errors
+- Logs: 530+ segments processed, every one "No bat calls detected"
+- BatDetect2 emission count over 4 hrs: **0** at any threshold visible
+  in logs
+- AudioMoth: still registered at 384 kHz via `/proc/asound/card2/stream0`
+- HOBO: site temp at 6 °C (below bat activity threshold ~10 °C)
+
+**First hypothesis:** cold weather was the primary cause. User deferred.
+
+**~12:40** (next day) — still 0. Dropped back in. Second sweep found:
+
+- `dmesg`: **55 "Undervoltage detected!" events** this boot (~every
+  1–2 min)
+- `vcgencmd get_throttled`: `0x50000` (undervoltage + throttling
+  occurred since boot)
+- `vcgencmd pmic_read_adc EXT5V_V`: **4.76 V** (below Pi 5 spec of 5.1 V)
+- Pi rebooted at 11:13 EDT unprompted — brownout reset
+- A diagnostic 15 s capture (stop batdetect, `arecord` on host) showed
+  RMS **0.000952** — the mic noise floor, no real signal
+
+**First root cause:** Pi 5 undervoltage, caused by a power bank rated
+5 V @ 3 A max. Pi 5 pulls up to 5 A under burst load. Power bank sagged,
+Pi throttled USB, AudioMoth preamp starved.
+
+**Remediation (power)**: PSU swap (advisor did this on-site). Result:
+`throttled = 0x0`, `EXT5V_V = 5.01 V`, zero undervoltage events this
+boot.
+
+**~14:10** — verified post-PSU: power was clean **but audio RMS was
+still 0.001**. Ambient mic output unchanged despite the PSU fix. Meant
+undervoltage was a necessary-but-not-sufficient problem.
+
+**Second hypothesis (ranked):** 50 % AudioMoth gain config not applied,
+30 % physical obstruction, 15 % dead mic, 5 % cable.
+
+**~21:45** — built a **live-stream watcher** (see section 4.2) to
+observe `audio_levels` as the advisor interacted with the device.
+
+**~21:54–22:31**: baseline still 0.00104, peak 0.006–0.018. Advisor
+was reportedly "making noise near the mic" but the signal wasn't
+moving. A few brief peak spikes to 0.012–0.018 suggested the mic was
+*responding to impulses* but the baseline / sustained sensitivity was
+stuck.
+
+**~22:42** — breakthrough: RMS jumped 5–10× and peaks jumped 30–130×.
+
+```
+BEFORE (21:54 – 22:31):  rms ≈ 0.00104   peak ≈ 0.006–0.018
+AFTER  (22:42 – 22:55):  rms ≈ 0.006     peak ≈ 0.15–0.82
+```
+
+The advisor had done **something** in that gap (they said gain change,
+which was likely accompanied by a power-cycle of the AudioMoth). The
+working theory: the AudioMoth USB Microphone firmware in CUSTOM mode
+doesn't always re-apply its saved config until the device is fully
+power-cycled. The **first** gain bump didn't take; the **second pass
+with a disconnect** did.
+
+**~22:56** — verified quiet-state baseline after advisor stopped
+interacting: `rms ≈ 0.006`, `peak ≈ 0.16`, consistent with normal
+outdoor ambient at a site with an 8 kHz hardware HPF.
+
+Pipeline unblocked. Ready for real detections.
+
+---
+
+## Diagnostic methodology
+
+Always do these in order. Each step narrows the failure mode; skipping
+earlier steps will waste time on symptoms.
+
+### Step 1 — Service-level health (30 seconds)
+
+```bash
+# Service state
+docker ps --filter name=batdetect --format 'status={{.Status}} uptime={{.RunningFor}}'
+
+# Error count in last 24 h
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT count(*) FROM capture_errors
+  WHERE service='batdetect-service' AND recorded_at > NOW() - INTERVAL '24 hours';"
+
+# Classifier + thresholds from startup log
+docker logs edge-batdetect-service-1 2>&1 | grep -E \
+  "Initializing|HPF enabled|Classifier ready|Storage tiering|Audio validator|Monitoring started" | tail -10
+```
+
+All green = move on. Errors/restarts = fix service issues first.
+
+### Step 2 — Power / undervoltage (60 seconds)
+
+```bash
+vcgencmd get_throttled                    # want 0x0
+vcgencmd pmic_read_adc EXT5V_V            # want ~5.00 V, at least 4.9 V
+dmesg | grep -c "Undervoltage detected"   # want 0 this boot
+uptime                                    # if Pi rebooted recently, suspect PSU
+```
+
+Throttled flags (hex):
+
+| Bit | Hex | Meaning |
+| --- | --- | --- |
+| 0 | 0x1 | Under-voltage **right now** |
+| 1 | 0x2 | ARM frequency capped right now |
+| 2 | 0x4 | Currently throttled |
+| 16 | 0x10000 | Under-voltage **has occurred since boot** |
+| 17 | 0x20000 | ARM freq capping since boot |
+| 18 | 0x40000 | Throttling since boot |
+
+If any bit is set, **do not continue debugging audio** — fix the PSU
+first (section 5.1). Undervoltage silently degrades the USB preamp
+voltage to the AudioMoth, masking everything else.
+
+### Step 3 — Audio level (30 seconds)
+
+```bash
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT count(*) AS n,
+         round(avg(rms)::numeric, 5)  AS avg_rms,
+         round(avg(peak)::numeric, 4) AS avg_peak
+  FROM audio_levels
+  WHERE recorded_at > NOW() - INTERVAL '10 minutes';"
+```
+
+Reference ranges (outdoor with 8 kHz hardware HPF, AudioMoth Medium-High
+gain):
+
+| Condition | avg_rms | avg_peak |
+| --- | --- | --- |
+| Mic silent / broken | < 0.002 | < 0.01 |
+| Undervolted or gain too low | 0.002 – 0.003 | 0.01 – 0.05 |
+| **Normal outdoor ambient** | **0.005 – 0.02** | **0.05 – 0.2** |
+| Loud near-field sound (voice, hands) | 0.02 – 0.05 | 0.2 – 0.8 |
+| Clipping | saturating | ≥ 0.9 |
+
+If `avg_rms < 0.003`, the mic is not getting useful signal. Proceed to
+section 5.2.
+
+### Step 4 — Weather reality check
+
+Bats don't fly below ~10 °C. Check the HOBO sensor:
+
+```bash
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT to_char(recorded_at AT TIME ZONE 'America/New_York', 'HH24:MI') AS et,
+         round(temperature_c::numeric, 1) AS c, sensor_serial
+  FROM environmental_readings
+  WHERE recorded_at > NOW() - INTERVAL '2 hours'
+  ORDER BY recorded_at DESC LIMIT 10;"
+```
+
+If it's cold and rainy, the pipeline may be fine — there are just no
+bats in the air. Don't keep debugging software at that point.
+
+---
+
+## Remediation playbooks
+
+### 5.1 Pi 5 power supply
+
+**Symptom:** `vcgencmd get_throttled` returns non-zero, `EXT5V_V < 5.0 V`,
+dmesg shows undervoltage events.
+
+Root cause: Pi 5 officially requires **5.1 V @ 5 A (27 W)**. The
+standard USB-C PD profiles top out at 5 V @ 3 A, so most consumer
+power banks cap there. When the Pi needs more than 3 A (batdetect-service
+inference + USB audio + SSD/SD I/O), the bank sags, the rail undervolts,
+and the kernel logs it.
+
+Options ranked by reliability:
+
+1. **Official Raspberry Pi 5 27 W USB-C Power Supply** (5.1 V / 5 A)
+   directly into mains. Cheapest and most reliable. If the deployment
+   has mains, this is the answer.
+
+2. **Mains + UPS HAT** (Waveshare UPS HAT (E), Argon ONE UPS, PiJuice)
+   for brownout protection. Batteries ride through short mains outages.
+
+3. **12 V LiFePO4 battery + 5 V / 5 A buck converter.** Rugged field
+   solution; requires some DC wiring. Overkill for a single-site
+   deployment unless mains is unavailable.
+
+4. **Power bank explicitly rated 5 V / 5 A on USB-C**. Rare. Check the
+   spec sheet — if it says "20 V @ 5 A" that's irrelevant; you need
+   5 V @ 5 A specifically. The Pi's PD negotiator downshifts to 5 V.
+
+What **does not work**:
+
+- Pi 4 PSU (15 W / 3 A) — will trigger undervoltage on Pi 5
+- Generic phone chargers — most are 5 V @ 2 A
+- Most consumer USB-C power banks — they don't offer 5 V @ 5 A
+- Battery banks without USB-C PD
+
+**Verification after swap:**
+
+```bash
+vcgencmd get_throttled    # expect: throttled=0x0
+vcgencmd pmic_read_adc EXT5V_V    # expect: ~5.0 V
+uptime                    # uptime should be stable (not frequent reboots)
+```
+
+### 5.2 AudioMoth USB Microphone — gain not applied
+
+**Symptom:** `audio_levels.rms` stuck near mic noise floor (~0.001)
+despite clean power. Peak values might show small spikes during sound
+(0.01–0.02) but the baseline doesn't change.
+
+Root cause (likely): AudioMoth USB Microphone firmware in **CUSTOM**
+mode occasionally doesn't re-apply the config until the device is
+fully power-cycled. Saving in the config app writes to flash; the
+device reads that flash only at power-on.
+
+**Fix (on advisor's laptop with AudioMoth config app + USB cable):**
+
+1. Open the AudioMoth USB Microphone configuration app.
+2. Verify current settings:
+   - Switch position: **CUSTOM** (not DEFAULT — DEFAULT ignores filters)
+   - Sample rate: **384 kHz** (Pi asks for 256 kHz; ALSA resamples)
+   - Gain: **Medium-High** or **High** (NOT Medium — too quiet outdoors)
+   - Filter: **High-pass, 8 kHz cutoff** (advisor's site choice; 16 kHz
+     cleaner for archive)
+3. Click "Apply" / "Save" in the app.
+4. **Fully unplug the AudioMoth's USB cable** from the host.
+5. Wait **10 full seconds** (not just a tap).
+6. Replug into the Pi.
+7. The AudioMoth re-reads its flash config at power-on. Gain, filter,
+   and rate now match the app.
+
+**Verification: live-stream watcher**
+
+While the advisor makes test noises near the mic, stream the RMS live
+from the Pi:
+
+```bash
+last_seen=0
+while true; do
+  out=$(docker exec edge-db-1 psql -U postgres -d soundscape -t -A -F'|' -c "
+    SELECT id,
+           to_char(recorded_at AT TIME ZONE 'America/New_York','HH24:MI:SS'),
+           round(rms::numeric,5),
+           round(peak::numeric,4)
+    FROM audio_levels
+    WHERE id > $last_seen
+    ORDER BY id ASC;")
+  if [ -n "$out" ]; then
+    echo "$out" | while IFS='|' read id t rms peak; do
+      printf "%s  rms=%s  peak=%s\n" "$t" "$rms" "$peak"
+    done
+    last_seen=$(echo "$out" | tail -1 | cut -d'|' -f1)
+  fi
+  sleep 2
+done
+```
+
+Ask advisor to:
+
+1. **Tap the AudioMoth case** firmly — expect peak > 0.05
+2. **Jingle keys near the mic** (broadband ultrasonic) — expect RMS to
+   jump into the 0.01+ range during the 15 s segment
+3. **Speak loudly** — expect peak 0.3+
+4. **Stay quiet** — expect RMS to settle to ~0.005–0.01 (outdoor ambient)
+
+If peaks move but RMS never recovers to 0.005+ in silence, gain is
+still too low — bump to **High**, re-save, full power-cycle, retest.
+
+If nothing moves at all (both RMS and peak flat), proceed to section
+5.3.
+
+### 5.3 AudioMoth — mic element dead
+
+**Symptom:** Even with max gain and direct loud sounds at the mic port,
+RMS and peak don't change. Device enumerates on USB, streams packets,
+but audio content is flat.
+
+Diagnostic ladder (cheapest first):
+
+1. **Swap USB data cable.** A charge-only cable passes power but may
+   drop audio packets silently.
+2. **Remove AudioMoth from any enclosure.** Check for stickers, water,
+   dust in the mic port (the pinhole on the side).
+3. **Different USB port on the Pi.** Sometimes the Pi 5's USB 3.0
+   ports have less margin than USB 2.0.
+4. **Test on a different computer.** Plug the AudioMoth into a Mac
+   or Windows laptop and open Audacity. If RMS is still flat, the
+   AudioMoth itself is dead — replace it. If audio shows up correctly
+   on the laptop, the problem is Pi-side (driver, USB bus, container
+   lock, cable at Pi end).
+
+The laptop test is definitive. It takes 5 minutes and splits the
+diagnosis cleanly. Do this before buying another AudioMoth.
+
+---
+
+## Replicating the setup on a second Pi
+
+For when you want an identical rig for indoor testing (offline-WAV
+analysis + optional playback-through-ultrasonic-speaker) to iterate
+without touching the field Pi.
+
+### Hardware shopping list
+
+| Item | Spec | Why |
+| --- | --- | --- |
+| Raspberry Pi 5 | **4 GB+ RAM** | BatDetect2 + classifier need ~1.5 GB resident |
+| microSD card or SSD | 64 GB+, Samsung PRO Endurance or SanDisk High Endurance | Cheap cards cause postgres flush stalls |
+| **Official Pi 5 27 W USB-C PSU** | 5.1 V @ 5 A | Non-negotiable — anything less undervolts |
+| Pi 5 active cooling | Official active cooler or Argon case with fan | BatDetect2 hits 70 °C without it |
+| Case, vented | Any Pi 5 case | Avoid sealed cases |
+| AudioMoth USB Microphone | Firmware 1.9.1+ (USB Mic firmware, NOT standard AudioMoth firmware) | Streams via USB to the Pi |
+| USB cable for AudioMoth | Short, data-capable USB-A → USB-micro (check AudioMoth version) | Charge-only cables silently drop audio |
+| Optional: HOBO MX2201 BLE sensor | For cross-modal data integrity analysis | Only if replicating thesis experiment |
+
+### Software bring-up
+
+```bash
+# 1. Flash Raspberry Pi OS 64-bit Lite (no desktop).
+#    Set up SSH + WiFi in the imager.
+
+# 2. Boot + update
+ssh stafa@<pi-ip>
+sudo apt update && sudo apt upgrade -y
+sudo timedatectl set-timezone America/New_York  # or your zone
+
+# 3. Install Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker
+
+# 4. Clone repo
+git clone https://github.com/stafa-san/bat-edge-monitor.git
+cd bat-edge-monitor
+
+# 5. Firebase credentials — use a SEPARATE Firebase project for the
+#    lab rig so dashboard data doesn't mix with the field Pi.
+#    Drop the service-account JSON at:
+#      edge/sync-service/serviceAccountKey.json
+
+# 6. Create .env
+cat > edge/.env <<EOF
+FIREBASE_PROJECT_ID=<your-lab-project-id>
+ENABLE_GROUPS_CLASSIFIER=true
+ENABLE_STORAGE_TIERING=true
+ENABLE_ONEDRIVE_SYNC=false
+PI_SITE=lab01
+EOF
+
+# 7. AudioMoth config — use the AudioMoth USB Microphone App on a
+#    Mac/Windows machine:
+#      - Switch: CUSTOM (NOT DEFAULT)
+#      - Sample rate: 384 kHz
+#      - Gain: Medium-High (or High for quiet rooms)
+#      - Filter: High-pass, 8 kHz (field config) or 16 kHz (archive-clean)
+#    Save config. UNPLUG USB. Wait 10 s. Replug into Pi.
+
+# 8. Build + start
+cd edge
+docker compose up -d --build
+```
+
+### Verify bring-up sequence
+
+Run through the same Step 1–4 diagnostic ladder on the new rig. All
+should come out green in this order:
+
+```bash
+# Step 1 — services
+docker ps                           # all containers "Up"
+docker logs edge-batdetect-service-1 --tail 20 | grep "Monitoring started"
+# expect: Monitoring started — batdetect_threshold=0.5, min_pred_conf=0.6, segment=15s
+
+# Step 2 — power
+vcgencmd get_throttled              # expect: throttled=0x0
+vcgencmd pmic_read_adc EXT5V_V      # expect: ~5.0 V
+
+# Step 3 — audio (after 1 min of ambient)
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT round(avg(rms)::numeric, 5), round(avg(peak)::numeric, 4)
+  FROM audio_levels WHERE recorded_at > NOW() - INTERVAL '1 minute';"
+# expect (indoor ambient, 8 kHz HPF): avg_rms ~0.005–0.03
+
+# Step 4 — dashboard (after deploying a new Vercel copy pointed at the
+# lab Firebase project)
+#   Power card: Stable (green)
+#   5V Rail: green
+#   Audio Level: green or yellow
+#   No undervoltage banner
+```
+
+### Testing ideas for the lab rig
+
+- **Offline WAV analysis**: POST a known-species WAV to
+  `http://<pi-ip>:8080/analyze` — fastest iteration loop, no mic needed.
+- **Playback testing**: requires an ultrasonic speaker (Avisoft,
+  Pettersson, ~$800+). Not worth it unless the lab already has one;
+  consumer speakers cap at 20 kHz and bats call above that.
+- **Threshold experimentation**: change `DETECTION_THRESHOLD`,
+  `MIN_PREDICTION_CONF`, `VALIDATOR_MIN_RMS` etc. on the lab rig
+  without disturbing the field deployment; see
+  [`DETECTION_TUNING_PLAYBOOK.md`](DETECTION_TUNING_PLAYBOOK.md).
+
+---
+
+## Command reference — quick diagnostic one-liners
+
+```bash
+# Power
+vcgencmd get_throttled
+vcgencmd pmic_read_adc EXT5V_V
+dmesg | grep -i undervolt | tail
+
+# Audio level
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT round(avg(rms)::numeric, 5) FROM audio_levels
+  WHERE recorded_at > NOW() - INTERVAL '10 minutes';"
+
+# Live stream (Ctrl+C to stop)
+watch -n 2 "docker exec edge-db-1 psql -U postgres -d soundscape -c \"
+  SELECT to_char(recorded_at, 'HH24:MI:SS'), round(rms::numeric, 5), round(peak::numeric, 4)
+  FROM audio_levels ORDER BY recorded_at DESC LIMIT 5;\""
+
+# AudioMoth USB enumeration
+lsusb | grep -i audiomoth
+cat /proc/asound/card2/stream0 2>/dev/null | head -14
+
+# Recent detections (last 6 h)
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT to_char(detection_time, 'MM-DD HH24:MI'),
+         predicted_class,
+         round(prediction_confidence::numeric, 2) AS pc,
+         round(detection_prob::numeric, 2) AS det
+  FROM bat_detections
+  WHERE detection_time > NOW() - INTERVAL '6 hours'
+  ORDER BY detection_time DESC;"
+
+# Capture errors
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT to_char(recorded_at, 'MM-DD HH24:MI'), error_type, count(*)
+  FROM capture_errors
+  WHERE service='batdetect-service' AND recorded_at > NOW() - INTERVAL '6 hours'
+  GROUP BY 1, 2 ORDER BY 1 DESC;"
+
+# Weather (HOBO sensor)
+docker exec edge-db-1 psql -U postgres -d soundscape -c "
+  SELECT to_char(recorded_at, 'MM-DD HH24:MI'),
+         round(temperature_c::numeric, 1), sensor_serial
+  FROM environmental_readings
+  WHERE recorded_at > NOW() - INTERVAL '1 hour'
+  ORDER BY recorded_at DESC LIMIT 6;"
+```
+
+---
+
+## Baseline reference — what "healthy" looks like
+
+Numbers to compare your own rig against. These are from this Pi on
+2026-04-21 after both power and gain fixes were applied.
+
+| Metric | Value | Pass threshold |
+| --- | --- | --- |
+| `throttled_hex` | `0x0` | **0x0** only |
+| `EXT5V_V` | 4.98–5.01 V | ≥ 4.9 V |
+| `coreVoltage` | 0.88 V | 0.75–0.95 V |
+| undervolt events / hour | 0 | **0** |
+| `audio_levels.rms` avg (10 min ambient) | 0.006 | 0.003–0.03 |
+| `audio_levels.peak` avg (10 min ambient) | 0.16 | 0.05–0.5 |
+| `audio_levels.peak` on tap test | 0.8+ | ≥ 0.3 |
+| AudioMoth in `/proc/asound/cards` | `384kHz AudioMoth USB Microphone` | must list |
+| `arecord -l` shows card 2 | USB Audio | yes |
+| Pi CPU temp (idle) | 46–55 °C | ≤ 70 °C |
+| Pi load avg 5m | 2–4 | < 5 sustained |
+
+A rig that meets all of these and has weather above 10 °C at night
+will produce real bat detections. The converse: if any of these fails,
+no amount of threshold tuning in software will save you.
+
+---
+
+## Lessons — pin these on the wall
+
+1. **Services up ≠ pipeline working.** Our dashboard showed "everything
+   green" for 18 hours while producing zero useful data. Add telemetry
+   *before* you need it — the voltage + audio-RMS panels built during
+   this session would have pinpointed both root causes in 30 seconds.
+2. **Fix upstream first.** Undervoltage masks mic problems. Mic problems
+   mask classifier problems. Debug the stack top-down.
+3. **AudioMoth batteries do not help in USB mode.** USB Microphone
+   firmware runs entirely on USB power regardless of whether AAs are
+   inserted. Don't waste time checking batteries.
+4. **CUSTOM mode on the AudioMoth requires a full power-cycle** after
+   saving config. "Click save" alone isn't enough.
+5. **"Normal outdoor ambient" with an 8 kHz HPF is RMS ≈ 0.005–0.02**,
+   not indoor-quiet 0.00001. Don't over-calibrate validator thresholds
+   against a lab environment.
+6. **Weather is a real variable.** A 6 °C night genuinely produces zero
+   bat activity. Always check the HOBO temp before assuming the
+   pipeline is broken.
+7. **Peak and RMS tell different stories.** A responsive mic with low
+   gain shows big peaks during sound events but low overall RMS. A dead
+   mic shows flat everything. Look at both before drawing conclusions.
