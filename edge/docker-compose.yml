@@ -103,6 +103,15 @@ services:
       - ONEDRIVE_REMOTE_BASE_PATH=${ONEDRIVE_REMOTE_BASE_PATH:-Bat Recordings from pi01}
       - ONEDRIVE_SYNC_INTERVAL_MINUTES=${ONEDRIVE_SYNC_INTERVAL_MINUTES:-60}
       - ONEDRIVE_MAX_FILES_PER_BATCH=${ONEDRIVE_MAX_FILES_PER_BATCH:-50}
+      # Daily summary email — one rollup per UTC day. Disabled by
+      # default; set ENABLE_DAILY_SUMMARY=true in .env plus GMAIL
+      # credentials (see daily_summary.py docstring).
+      - ENABLE_DAILY_SUMMARY=${ENABLE_DAILY_SUMMARY:-false}
+      - DAILY_SUMMARY_HOUR_UTC=${DAILY_SUMMARY_HOUR_UTC:-11}
+      - DAILY_SUMMARY_RECIPIENTS=${DAILY_SUMMARY_RECIPIENTS:-}
+      - DAILY_SUMMARY_WINDOW_HOURS=${DAILY_SUMMARY_WINDOW_HOURS:-24}
+      - GMAIL_USER=${GMAIL_USER:-}
+      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD:-}
     volumes:
       - ./sync-service/serviceAccountKey.json:/app/serviceAccountKey.json:ro
       - /proc/uptime:/host/uptime:ro

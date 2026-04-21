@@ -8,6 +8,7 @@ from firebase_admin import credentials, firestore
 
 from src import onedrive_sync
 from src.disk_watchdog import enforce_disk_quota, get_audio_disk_stats
+from src.daily_summary import send_summary
 from src.health import collect_all_metrics
 
 # Module-level state so sync_device_status can surface last OneDrive
@@ -271,6 +272,34 @@ def run_migrations(conn):
             CREATE INDEX IF NOT EXISTS idx_audio_levels_recorded_at
             ON audio_levels(recorded_at DESC)
         """)
+        # BD diagnostic stats and validator rejections — persisted so the
+        # dashboard can surface "detector saw X sub-threshold emissions"
+        # and "validator rejected Y segments for reason Z" without needing
+        # to grep logs. Both are added to audio_levels rather than their
+        # own tables because they're per-segment metrics (one row per
+        # 15-second capture) — keeping them together simplifies retention
+        # cleanup.
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bd_raw_count') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bd_raw_count INTEGER;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bd_max_det_prob') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bd_max_det_prob DOUBLE PRECISION;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bd_user_pass') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bd_user_pass INTEGER;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='rejection_reason') THEN
+                    ALTER TABLE audio_levels ADD COLUMN rejection_reason VARCHAR(48);
+                END IF;
+            END $$;
+        """)
         # Add audio columns to bat_detections if they don't exist yet
         cur.execute("""
             DO $$
@@ -447,6 +476,15 @@ def sync_device_status(conn, db):
             "audioRmsLatest": metrics.get("audio_rms_latest"),
             "audioRmsAvg1m": metrics.get("audio_rms_avg_1m"),
             "audioPeakLatest": metrics.get("audio_peak_latest"),
+            # BD diagnostic stats (what the detector sees, even when
+            # nothing passes the user threshold)
+            "bdRawCountLatest": metrics.get("bd_raw_count_latest"),
+            "bdMaxDetProbLatest": metrics.get("bd_max_det_prob_latest"),
+            "bdUserPassLatest": metrics.get("bd_user_pass_latest"),
+            "bdMaxDetProb1h": metrics.get("bd_max_det_prob_1h"),
+            "bdRawAvg1h": metrics.get("bd_raw_avg_1h"),
+            # Validator rejection reasons, rolling 1 h
+            "rejectionReasons1h": metrics.get("rejection_reasons_1h", {}),
             "captureErrors1h": metrics["capture_errors_1h"],
             "dbSizeMb": metrics["db_size_mb"],
             "classificationsTotal": metrics["classifications_total"],
@@ -648,6 +686,18 @@ def main():
 
     print(f"[SYNC] Starting sync loop (data: {sync_interval}s, health: {health_interval}s)")
 
+    # Daily summary schedule: fire once per day at DAILY_SUMMARY_HOUR_UTC.
+    # We track the date of the last send in a module-level var so the
+    # loop can compare without persisting state.
+    summary_enabled = os.getenv("ENABLE_DAILY_SUMMARY", "false").lower() == "true"
+    summary_hour_utc = int(os.getenv("DAILY_SUMMARY_HOUR_UTC", "11"))
+    site_id = os.getenv("PI_SITE", "pi01")
+    summary_last_sent_date: str | None = None
+    if summary_enabled:
+        print(f"[SYNC] Daily summary enabled — fires at {summary_hour_utc:02d}:00 UTC")
+    else:
+        print("[SYNC] Daily summary disabled (ENABLE_DAILY_SUMMARY=false)")
+
     cycle = 0
     last_data_sync = 0.0  # force immediate first data sync
     while True:
@@ -676,6 +726,21 @@ def main():
 
             # Health status pushed every tick (fast interval)
             sync_device_status(conn, db)
+
+            # Daily summary: once per UTC day, within a grace window
+            # around the scheduled hour.
+            if summary_enabled:
+                now_utc = datetime.now(timezone.utc)
+                today_str = now_utc.strftime("%Y-%m-%d")
+                if (
+                    now_utc.hour == summary_hour_utc
+                    and summary_last_sent_date != today_str
+                ):
+                    try:
+                        send_summary(conn, site_id)
+                    except Exception as e:
+                        print(f"[SUMMARY] generation failed: {e}")
+                    summary_last_sent_date = today_str
 
             # Reclaim disk if the bat_audio store crossed the hard cap, or
             # flip/release the halt flag based on current usage.

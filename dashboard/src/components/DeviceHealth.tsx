@@ -41,6 +41,15 @@ export interface DeviceStatus {
   audioRmsLatest?: number | null;
   audioRmsAvg1m?: number | null;
   audioPeakLatest?: number | null;
+  // BD diagnostic stats — what the detector sees even when nothing
+  // passes the user threshold
+  bdRawCountLatest?: number | null;
+  bdMaxDetProbLatest?: number | null;
+  bdUserPassLatest?: number | null;
+  bdMaxDetProb1h?: number | null;
+  bdRawAvg1h?: number | null;
+  // Validator rejection counts, rolling 1 h
+  rejectionReasons1h?: Record<string, number>;
   recordedAt: Timestamp;
   lastSeen?: Timestamp;
   lastOffline?: Timestamp;
@@ -174,6 +183,28 @@ function rmsColor(v: number | null | undefined): string {
   if (v < 0.01) return "text-yellow-600";  // very quiet / possibly undervolted
   if (v > 0.3) return "text-yellow-600";   // clipping risk
   return "text-green-600";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Detector (BD stats) helpers                                        */
+/* ------------------------------------------------------------------ */
+
+function detectorSubLabel(s: DeviceStatus): string | undefined {
+  if (s.bdRawCountLatest == null) return undefined;
+  const raw = s.bdRawCountLatest;
+  const maxProb = s.bdMaxDetProbLatest ?? 0;
+  const pass = s.bdUserPassLatest ?? 0;
+  if (raw === 0) return "nothing above 0.1";
+  if (pass > 0) return `${pass} passed user threshold`;
+  if (maxProb >= 0.3) return `weak signal (1h peak ${(s.bdMaxDetProb1h ?? 0).toFixed(2)})`;
+  return `noise-level (1h peak ${(s.bdMaxDetProb1h ?? 0).toFixed(2)})`;
+}
+
+function detectorColor(s: DeviceStatus): string {
+  if (s.bdRawCountLatest == null) return "text-gray-900";
+  if ((s.bdUserPassLatest ?? 0) > 0) return "text-green-600";
+  if ((s.bdMaxDetProbLatest ?? 0) >= 0.3) return "text-yellow-600";
+  return "text-gray-600";
 }
 
 function rmsSubLabel(
@@ -755,6 +786,18 @@ export function DeviceHealth({
             color={rmsColor(status.audioRmsLatest)}
           />
           <MetricCard
+            label="Detector"
+            value={
+              status.bdMaxDetProbLatest != null
+                ? `max ${status.bdMaxDetProbLatest.toFixed(2)}`
+                : status.bdRawCountLatest === 0
+                  ? "idle"
+                  : "—"
+            }
+            sub={detectorSubLabel(status)}
+            color={detectorColor(status)}
+          />
+          <MetricCard
             label="Database"
             value={`${status.dbSizeMb?.toFixed(1) ?? "—"} MB`}
             sub={`${status.classificationsTotal?.toLocaleString() ?? 0} rows · ${status.unsyncedCount ?? 0} unsynced`}
@@ -766,6 +809,26 @@ export function DeviceHealth({
             color={errorColor(status.captureErrors1h ?? 0)}
           />
         </div>
+
+        {/* Validator rejection reasons — rolling 1h. Empty when the
+            validator hasn't dropped anything recently; otherwise a
+            chip row showing counts per reason. */}
+        {status.rejectionReasons1h &&
+          Object.keys(status.rejectionReasons1h).length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500">Validator (1 h):</span>
+            {Object.entries(status.rejectionReasons1h).map(([reason, count]) => (
+              <span
+                key={reason}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-700 border border-gray-200"
+                title={`${count} segments rejected by ${reason}`}
+              >
+                <span className="font-mono text-[10px]">{reason.replace("validator:", "")}</span>
+                <span className="bg-gray-200 text-gray-800 px-1 rounded text-[10px]">{count}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       </div>{/* end stale-styled Pi+AudioMoth wrapper */}

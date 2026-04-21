@@ -629,6 +629,98 @@ docker logs edge-batdetect-service-1 --since 6h 2>&1 \
 
 ---
 
+## Daily summary email
+
+Once per UTC day, the sync-service can generate a plain-text + HTML
+rollup of the last 24 hours and email it. It always logs the summary
+to container stdout regardless of email config, so you can see the
+format immediately.
+
+### Enabling the email send
+
+1. **Turn on 2-factor auth** for the sender Gmail account:
+   <https://myaccount.google.com/security>.
+
+2. **Create an app password** (Mail):
+   <https://myaccount.google.com/apppasswords>. Copy the 16-character
+   string — the spaces are optional, SMTP strips them.
+
+3. Add to `edge/.env`:
+   ```
+   ENABLE_DAILY_SUMMARY=true
+   DAILY_SUMMARY_HOUR_UTC=11
+   DAILY_SUMMARY_RECIPIENTS=you@example.com,advisor@example.com
+   GMAIL_USER=sender@gmail.com
+   GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+   ```
+
+4. `docker compose up -d sync-service`. The next tick at 11:00 UTC
+   (07:00 EDT) will send.
+
+### Forcing a test send now (without waiting for 11 UTC)
+
+```bash
+docker exec edge-sync-service-1 python3 -c "
+from src.daily_summary import send_summary
+from src.main import get_db_connection
+import os
+send_summary(get_db_connection(), os.getenv('PI_SITE', 'pi01'))
+"
+```
+
+Output shows the full report in stdout, then attempts to send. If
+credentials are missing it logs `GMAIL_USER/GMAIL_APP_PASSWORD not set
+— skipping email send` and exits cleanly.
+
+### What the email contains
+
+- Bat detections count + top classes
+- Audio RMS p50 / p95 / max peak (window of segments processed)
+- BatDetect2 stats: average raw emissions per segment, max det_prob
+  observed, count of segments that passed the user threshold
+- Validator rejection counts, broken down by reason
+- HOBO temperature min / avg / max
+- Capture error count (flagged in red if non-zero)
+- Dashboard URL
+
+Example:
+
+```
+Bat Edge Monitor — daily summary (pi01)
+Window: last 24 h, generated 2026-04-21 11:00 UTC
+
+Bat detections: 3
+  LACI              2
+  EPFU_LANO         1
+
+Audio segments processed: 2,744
+  RMS p50       : 0.00620
+  RMS p95       : 0.01410
+  Peak max      : 0.8291
+
+BatDetect2 activity:
+  avg raw emissions / segment : 8.4
+  max det_prob observed       : 0.58
+  segments that passed user threshold : 3
+
+Validator rejections:
+  validator:no_burst             5
+  all_below_user_threshold     1412
+
+Temperature (2 sensor(s)):
+  min / avg / max  : 14.2 / 19.7 / 24.1 °C
+```
+
+### Failure modes
+
+- **`GMAIL_USER/GMAIL_APP_PASSWORD not set`** — credentials missing.
+  The summary still runs, just isn't emailed.
+- **`DAILY_SUMMARY_RECIPIENTS empty`** — configure recipients in `.env`.
+- **`smtplib.SMTPAuthenticationError`** — the app password is wrong or
+  2FA isn't enabled on the Gmail account. Regenerate the app password.
+
+---
+
 ## Command reference — quick diagnostic one-liners
 
 ```bash
