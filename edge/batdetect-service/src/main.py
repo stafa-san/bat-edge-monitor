@@ -259,6 +259,7 @@ def _run_batdetect_with_classifier(
                 det.get("start_time", 0.0), det.get("end_time", 0.0),
                 min_slope_khz_per_ms=fm_sweep_cfg.get("min_slope_khz_per_ms", -0.1),
                 max_low_band_ratio=fm_sweep_cfg.get("max_low_band_ratio", 0.5),
+                min_r2=fm_sweep_cfg.get("min_r2", 0.2),
             )
             if ok:
                 passed.append((det, pred))
@@ -314,6 +315,7 @@ async def main():
         "enabled": os.getenv("FM_SWEEP_ENABLED", "true").lower() == "true",
         "min_slope_khz_per_ms": float(os.getenv("FM_SWEEP_MIN_SLOPE", "-0.1")),
         "max_low_band_ratio": float(os.getenv("FM_SWEEP_MAX_LOW_BAND_RATIO", "0.5")),
+        "min_r2": float(os.getenv("FM_SWEEP_MIN_R2", "0.2")),
     }
 
     if enable_storage_tiering and not enable_classifier:
@@ -374,7 +376,8 @@ async def main():
         print(
             f"[BAT] FM-sweep shape filter enabled — "
             f"min_slope={fm_sweep_cfg['min_slope_khz_per_ms']} kHz/ms, "
-            f"max_low_band_ratio={fm_sweep_cfg['max_low_band_ratio']}"
+            f"max_low_band_ratio={fm_sweep_cfg['max_low_band_ratio']}, "
+            f"min_r2={fm_sweep_cfg['min_r2']}"
         )
     else:
         print("[BAT] FM-sweep shape filter disabled (FM_SWEEP_ENABLED=false)")
