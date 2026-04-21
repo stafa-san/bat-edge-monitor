@@ -76,27 +76,36 @@ def has_bat_call_shape(
     end_time: float,
     min_slope_khz_per_ms: float = -0.1,
     max_low_band_ratio: float = 0.5,
+    min_r2: float = 0.2,
     low_band_cutoff_hz: float = 15000.0,
-    pad_ms: float = 3.0,
+    pad_ms: float = 10.0,
+    frame_ms: float = 1.0,
+    frame_overlap: float = 0.5,
 ) -> Tuple[bool, str, dict]:
     """Per-detection shape check — distinguishes real echolocation from
     broadband noise (insect clicks, mechanical contacts, rain drops).
 
     Runs on the local audio window around BatDetect2's detection bounding
-    box. Checks TWO things that characterise real bat calls but NOT
+    box. Checks THREE things that characterise real bat calls but NOT
     broadband noise:
 
     1. **Low-band-energy ratio.** A real bat call concentrates its energy
        in the ultrasonic band (≥ 15 kHz). Broadband clicks dump energy
        across the full spectrum including sub-bat frequencies. If the
-       0-15 kHz power inside the call window is comparable to the
-       15+ kHz power, it's not a bat — it's a click.
+       0-15 kHz power inside the call window is > 50% of the 15+ kHz
+       power, it's not a bat — it's a click.
 
-    2. **Downward FM sweep.** Bat echolocation pulses sweep downward in
-       frequency over their duration (e.g. EPFU sweeps 40 → 25 kHz over
-       ~10 ms). A broadband click has near-zero slope and scattered
-       peak frequencies — its linear fit will be flat or chaotic.
+    2. **Coherent peak frequencies (R²).** A real bat call's per-frame
+       peak frequency follows a smooth line. A broadband click has
+       peaks jumping chaotically across the bat band, so R² of the
+       linear fit is near zero. R² > 0.2 required.
 
+    3. **Downward FM sweep slope.** Bat echolocation pulses sweep
+       downward in frequency (EPFU ~40 → 25 kHz over 10 ms, LACI
+       ~28 → 22 kHz over 15 ms, etc). Slope must be more negative
+       than -0.1 kHz/ms.
+
+    All three must pass. Any failure returns a specific reason string.
     Returns ``(is_bat_call, reason, stats)``. ``stats`` always carries
     the measured numbers so the caller can log them for tuning.
     """
@@ -110,70 +119,98 @@ def has_bat_call_shape(
     if audio is None or audio.size == 0:
         return False, "empty_audio", stats
 
-    # Extract a padded window around the detection's time bounding box
+    # Extract a padded window around the detection's time bounding box.
+    # Padding matters — BatDetect2 gives tight bounding boxes (~10 ms
+    # call in a ~10 ms box), so we pad generously to have context for
+    # the baseline and enough frames for a slope fit.
     pad = pad_ms / 1000.0
     lo = max(0, int((start_time - pad) * sr))
     hi = min(len(audio), int((end_time + pad) * sr))
     window = audio[lo:hi]
-    if len(window) < 64:
-        return False, "window_too_short", stats
+    min_samples = int(4 * frame_ms / 1000.0 * sr)
+    if len(window) < min_samples:
+        return False, f"window_too_short({len(window)}smp)", stats
 
-    # Spectrogram with fine time resolution (~0.5 ms windows at 256 kHz)
-    from scipy.signal import spectrogram
-    nperseg = max(int(0.0005 * sr), 64)
-    noverlap = int(0.75 * nperseg)
+    # Spectrogram. 1 ms frames give 1 kHz frequency resolution at
+    # 256 kHz — fine enough to resolve LACI's ~0.4 kHz/ms sweep.
+    nperseg = max(int(frame_ms / 1000.0 * sr), 64)
+    noverlap = int(frame_overlap * nperseg)
     freqs, times, Sxx = spectrogram(
         window.astype(np.float32), fs=sr, window="hann",
         nperseg=nperseg, noverlap=noverlap, mode="magnitude",
     )
 
     # ---- Low-band energy ratio -------------------------------------------
+    # Measured AT THE PEAK FRAME (loudest moment), not averaged over the
+    # whole window. Averaging across mostly-ambient padding makes both
+    # bands look like "ambient everywhere" and loses the call's signature.
+    # At the peak frame:
+    #   - Real bat call: bat-band peak is the call (loud), low-band peak
+    #     is ambient (quiet). Ratio ≈ 0.01.
+    #   - Broadband click: bat-band peak and low-band peak are both from
+    #     the same click event. Ratio ≈ 1.0.
     low_band = freqs < low_band_cutoff_hz
     bat_band = freqs >= low_band_cutoff_hz
     if not low_band.any() or not bat_band.any():
         return False, "bad_frequency_split", stats
 
-    low_power = float(np.median(np.max(Sxx[low_band, :], axis=0)))
-    bat_power = float(np.median(np.max(Sxx[bat_band, :], axis=0)))
-    if bat_power <= 0:
+    # Frame with the loudest bat-band energy — anchors the measurement
+    bat_max_per_frame = np.max(Sxx[bat_band, :], axis=0)
+    if bat_max_per_frame.size == 0 or float(bat_max_per_frame.max()) <= 0:
+        return False, "bat_band_silent", stats
+    peak_frame = int(np.argmax(bat_max_per_frame))
+    # ±2 frame window around the peak (5 frames = ~5 ms at 1 ms frames)
+    f0 = max(0, peak_frame - 2)
+    f1 = min(Sxx.shape[1], peak_frame + 3)
+
+    peak_low = float(np.max(Sxx[low_band, f0:f1]))
+    peak_bat = float(np.max(Sxx[bat_band, f0:f1]))
+    if peak_bat <= 0:
         return False, "bat_band_silent", stats
 
-    low_band_ratio = low_power / bat_power
+    low_band_ratio = peak_low / peak_bat
     stats["low_band_ratio"] = round(low_band_ratio, 3)
 
     if low_band_ratio > max_low_band_ratio:
         return False, f"broadband_noise(lowband_ratio={low_band_ratio:.2f})", stats
 
-    # ---- FM sweep slope (linear regression on per-frame peak freq) -------
+    # ---- FM sweep with WEIGHTED LS (frames with more bat-band energy
+    #      dominate the fit). Unweighted polyfit on a window containing
+    #      mostly ambient padding was getting dragged around by the
+    #      padding's random peak frequencies. Weighting makes the call
+    #      drive the fit while ambient frames contribute ~nothing.
     bat_Sxx = Sxx[bat_band, :]
     bat_freqs = freqs[bat_band]
     if bat_Sxx.size == 0 or bat_Sxx.shape[1] < 4:
         return False, "too_few_frames", stats
 
-    # Keep only frames with significant bat-band energy
-    frame_max = np.max(bat_Sxx, axis=0)
-    threshold_linear = float(np.median(frame_max)) * 2.0
-    significant = frame_max > threshold_linear
-
-    if significant.sum() < 4:
-        return False, "too_few_significant_frames", stats
-
     peak_freqs = bat_freqs[np.argmax(bat_Sxx, axis=0)]
-    t_sig = times[significant]
-    f_sig = peak_freqs[significant]
-    stats["n_frames_used"] = int(significant.sum())
+    # Weight each frame by its bat-band peak energy (normalised).
+    peak_per_frame = bat_max_per_frame  # reused from above
+    w = peak_per_frame / (float(peak_per_frame.max()) + 1e-20)
+    stats["n_frames_used"] = int(len(times))
 
-    # Polyfit; slope is in Hz/s. Convert to kHz/ms (same thing: / 1e6).
-    slope_hz_per_s, intercept = np.polyfit(t_sig, f_sig, 1)
-    slope_khz_per_ms = slope_hz_per_s / 1_000_000.0
+    # polyfit accepts per-point weights; these are sqrt(weight) internally.
+    slope_hz_per_s, intercept = np.polyfit(times, peak_freqs, 1, w=w)
+    slope_khz_per_ms = float(slope_hz_per_s) / 1_000_000.0
     stats["slope_khz_per_ms"] = round(slope_khz_per_ms, 3)
 
-    # R² — check the fit is actually coherent (not chaotic scatter)
-    predicted = slope_hz_per_s * t_sig + intercept
-    ss_res = float(np.sum((f_sig - predicted) ** 2))
-    ss_tot = float(np.sum((f_sig - f_sig.mean()) ** 2))
+    # R² on only the active frames (weight ≥ 0.3 of peak). That's the
+    # frames where the call actually lives; scoring the fit against the
+    # padding frames would be misleading.
+    active = w >= 0.3
+    if active.sum() < 4:
+        return False, "too_few_active_frames", stats
+    t_a = times[active]
+    f_a = peak_freqs[active]
+    predicted = slope_hz_per_s * t_a + intercept
+    ss_res = float(np.sum((f_a - predicted) ** 2))
+    ss_tot = float(np.sum((f_a - f_a.mean()) ** 2))
     r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
     stats["fit_r2"] = round(r2, 3)
+
+    if r2 < min_r2:
+        return False, f"chaotic_peaks(r2={r2:.2f})", stats
 
     # Real bat calls sweep down. min_slope_khz_per_ms is negative;
     # the measured slope must be more negative than that threshold.
