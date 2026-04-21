@@ -27,6 +27,20 @@ export interface DeviceStatus {
   unsyncedCount: number;
   sampleRateHz?: number;
   audiomothHwSampleRate?: number | null;
+  // Power / undervoltage diagnostics (Pi 5 via vcgencmd)
+  throttledHex?: string | null;
+  undervoltNow?: boolean | null;
+  undervoltSinceBoot?: boolean | null;
+  throttledNow?: boolean | null;
+  throttledSinceBoot?: boolean | null;
+  freqCappedNow?: boolean | null;
+  freqCappedSinceBoot?: boolean | null;
+  coreVoltage?: number | null;
+  ext5vVoltage?: number | null;
+  // Audio RMS telemetry from batdetect-service
+  audioRmsLatest?: number | null;
+  audioRmsAvg1m?: number | null;
+  audioPeakLatest?: number | null;
   recordedAt: Timestamp;
   lastSeen?: Timestamp;
   lastOffline?: Timestamp;
@@ -104,6 +118,70 @@ function errorColor(n: number): string {
 function formatSampleRate(hz: number | null | undefined): string {
   if (!hz) return "—";
   return `${(hz / 1000).toFixed(0)} kHz`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Power / undervoltage helpers                                       */
+/* ------------------------------------------------------------------ */
+
+type PowerFields = Pick<
+  DeviceStatus,
+  "undervoltNow" | "undervoltSinceBoot" | "throttledNow" | "throttledSinceBoot"
+>;
+
+function powerStateLabel(s: PowerFields): string {
+  if (s.undervoltNow === true || s.throttledNow === true) return "Undervolting NOW";
+  if (s.undervoltSinceBoot === true || s.throttledSinceBoot === true) return "Recovered";
+  if (s.undervoltSinceBoot === false && s.throttledSinceBoot === false) return "Stable";
+  return "—";
+}
+
+function powerStateSub(s: PowerFields): string | undefined {
+  if (s.undervoltNow === true) return "Pi is below 4.6 V right now";
+  if (s.throttledNow === true) return "CPU throttled right now";
+  if (s.undervoltSinceBoot === true) return "Undervoltage occurred since boot";
+  if (s.throttledSinceBoot === true) return "Throttling occurred since boot";
+  if (s.undervoltSinceBoot === false && s.throttledSinceBoot === false) return "no undervoltage since boot";
+  return undefined;
+}
+
+function powerStateColor(s: PowerFields): string {
+  if (s.undervoltNow === true || s.throttledNow === true) return "text-red-600";
+  if (s.undervoltSinceBoot === true || s.throttledSinceBoot === true) return "text-yellow-600";
+  if (s.undervoltSinceBoot === false && s.throttledSinceBoot === false) return "text-green-600";
+  return "text-gray-900";
+}
+
+function voltageColor(v: number | null | undefined): string {
+  if (v == null) return "text-gray-900";
+  if (v < 4.8) return "text-red-600";
+  if (v < 5.0) return "text-yellow-600";
+  return "text-green-600";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Audio RMS helpers                                                  */
+/* ------------------------------------------------------------------ */
+
+function formatRms(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return v.toFixed(4);
+}
+
+function rmsColor(v: number | null | undefined): string {
+  if (v == null) return "text-gray-900";
+  if (v < 0.002) return "text-red-600";    // essentially silent
+  if (v < 0.01) return "text-yellow-600";  // very quiet / possibly undervolted
+  if (v > 0.3) return "text-yellow-600";   // clipping risk
+  return "text-green-600";
+}
+
+function rmsSubLabel(v: number | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  if (v < 0.002) return "mic silent — check hardware";
+  if (v < 0.01) return "very quiet — possible undervolt";
+  if (v > 0.3) return "loud / clipping risk";
+  return "normal ambient";
 }
 
 function tsToDate(ts: Timestamp | undefined | null): Date | null {
@@ -490,6 +568,44 @@ export function DeviceHealth({
         </div>
       </div>
 
+      {/* ── Undervoltage banner ── shows only if Pi is misbehaving right now */}
+      {(status.undervoltNow === true || status.throttledNow === true) && (
+        <div className="mb-4 px-4 py-3 rounded-lg border border-red-200 bg-red-50 flex items-start gap-3">
+          <span className="text-xl">⚠️</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-800">
+              {status.undervoltNow === true
+                ? "Undervoltage right now"
+                : "CPU throttled right now"}
+            </p>
+            <p className="text-xs text-red-700 mt-0.5">
+              The power supply isn't delivering 5.1 V · 5 A. AudioMoth mic
+              sensitivity will be reduced until the PSU is replaced.
+              {status.ext5vVoltage != null
+                ? ` 5V rail currently ${status.ext5vVoltage.toFixed(2)} V.`
+                : ""}
+            </p>
+          </div>
+        </div>
+      )}
+      {(status.undervoltNow !== true &&
+        status.throttledNow !== true &&
+        (status.undervoltSinceBoot === true || status.throttledSinceBoot === true)) && (
+        <div className="mb-4 px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 flex items-start gap-3">
+          <span className="text-xl">⚡</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-yellow-800">
+              Undervoltage has occurred since last boot
+            </p>
+            <p className="text-xs text-yellow-700 mt-0.5">
+              The Pi is running normally right now, but the power supply
+              dipped below 4.6 V at least once this session. Consider
+              upgrading the PSU before the next deployment.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Raspberry Pi ── */}
       <div className="mb-5">
         <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-1.5">
@@ -538,6 +654,26 @@ export function DeviceHealth({
               status.internetConnected ? "text-green-600" : "text-red-600"
             }
           />
+          <MetricCard
+            label="Power"
+            value={powerStateLabel(status)}
+            sub={powerStateSub(status)}
+            color={powerStateColor(status)}
+          />
+          <MetricCard
+            label="5 V Rail"
+            value={
+              status.ext5vVoltage != null
+                ? `${status.ext5vVoltage.toFixed(2)} V`
+                : "—"
+            }
+            sub={
+              status.coreVoltage != null
+                ? `core ${status.coreVoltage.toFixed(2)} V`
+                : undefined
+            }
+            color={voltageColor(status.ext5vVoltage)}
+          />
         </div>
       </div>
 
@@ -562,6 +698,16 @@ export function DeviceHealth({
               ? `${status.audiomothHwSampleRate.toLocaleString()} Hz (hardware)`
               : status.sampleRateHz ? `${status.sampleRateHz.toLocaleString()} Hz` : undefined}
             color="text-blue-600"
+          />
+          <MetricCard
+            label="Audio Level"
+            value={formatRms(status.audioRmsLatest)}
+            sub={
+              status.audioRmsAvg1m != null
+                ? `${rmsSubLabel(status.audioRmsLatest) ?? ""} · 1m avg ${formatRms(status.audioRmsAvg1m)}`.trim()
+                : rmsSubLabel(status.audioRmsLatest)
+            }
+            color={rmsColor(status.audioRmsLatest)}
           />
           <MetricCard
             label="Database"

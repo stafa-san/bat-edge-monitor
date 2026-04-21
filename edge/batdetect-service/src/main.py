@@ -13,11 +13,35 @@ import numpy as np
 import psycopg2
 from psycopg2.extras import execute_values
 from batdetect2 import api as bat_api
+from scipy.io import wavfile
 from scipy.signal import butter, sosfiltfilt
 
 from src import storage
 from src.audio_validator import is_likely_bat_call
 from src.classifier import classify, load_groups_classifier
+
+
+def _compute_audio_stats(wav_path: str) -> tuple[float | None, float | None]:
+    """Return ``(rms, peak)`` in 0..1 normalised amplitude, or ``(None, None)``.
+
+    Runs on the raw captured WAV before any software processing — what
+    the AudioMoth actually delivered to the USB bus. Used to surface
+    mic health on the dashboard (silent / undervolted mic).
+    """
+    try:
+        _sr, audio = wavfile.read(wav_path)
+        if audio.ndim > 1:
+            audio = audio[:, 0]
+        if audio.dtype.kind == "i":
+            max_val = float(np.iinfo(audio.dtype).max)
+            audio_f = audio.astype(np.float32) / max_val
+        else:
+            audio_f = audio.astype(np.float32)
+        rms = float(np.sqrt(np.mean(audio_f * audio_f)))
+        peak = float(np.max(np.abs(audio_f)))
+        return rms, peak
+    except Exception:
+        return None, None
 
 
 def get_db_connection():
@@ -289,6 +313,24 @@ async def main():
 
             # Capture audio segment
             audio_path = await capture.capture_segment(duration=segment_duration)
+
+            # Audio-level sample for dashboard troubleshooting (mic
+            # silent / undervolted surfaces here independent of any
+            # detection logic). Row inserted every segment; auto-
+            # expired after 7 days by sync-service.
+            rms, peak = _compute_audio_stats(audio_path)
+            if rms is not None:
+                try:
+                    conn = ensure_connection(conn)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO audio_levels (rms, peak) VALUES (%s, %s)",
+                            (rms, peak),
+                        )
+                    conn.commit()
+                except Exception as e:
+                    # Non-fatal: don't let audio-level telemetry kill capture.
+                    print(f"[BAT] audio_levels write failed: {e}")
 
             # Run detection (+ optionally classification)
             rejection_reason = None
