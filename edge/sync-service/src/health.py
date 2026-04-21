@@ -219,17 +219,32 @@ def get_power_status() -> dict:
 # silent / undervolted microphone is visible at a glance.
 
 def get_audio_levels(conn) -> dict:
-    """Latest + recent-average audio levels from the audio_levels table."""
+    """Latest + recent-average audio levels and BD stats + rejection counts.
+
+    Pulls a compact snapshot of the last 15 s segment plus rolled-up
+    counters over the last hour so the dashboard has enough to show
+    "detector is seeing weak signal" vs "detector is seeing nothing"
+    and "validator is rejecting N segments for reason R" without
+    needing log grep.
+    """
     out = {
         "audio_rms_latest": None,
         "audio_rms_avg_1m": None,
         "audio_peak_latest": None,
         "audio_levels_last_at": None,
+        "bd_raw_count_latest": None,
+        "bd_max_det_prob_latest": None,
+        "bd_user_pass_latest": None,
+        "bd_max_det_prob_1h": None,
+        "bd_raw_avg_1h": None,
+        "rejection_reasons_1h": {},
     }
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT rms, peak, recorded_at FROM audio_levels "
+                "SELECT rms, peak, recorded_at, "
+                "       bd_raw_count, bd_max_det_prob, bd_user_pass "
+                "FROM audio_levels "
                 "ORDER BY recorded_at DESC LIMIT 1"
             )
             row = cur.fetchone()
@@ -237,14 +252,40 @@ def get_audio_levels(conn) -> dict:
                 out["audio_rms_latest"] = round(float(row[0]), 6) if row[0] is not None else None
                 out["audio_peak_latest"] = round(float(row[1]), 6) if row[1] is not None else None
                 out["audio_levels_last_at"] = row[2]
+                if row[3] is not None:
+                    out["bd_raw_count_latest"] = int(row[3])
+                if row[4] is not None:
+                    out["bd_max_det_prob_latest"] = round(float(row[4]), 3)
+                if row[5] is not None:
+                    out["bd_user_pass_latest"] = int(row[5])
 
             cur.execute(
-                "SELECT AVG(rms) FROM audio_levels "
-                "WHERE recorded_at > NOW() - INTERVAL '1 minute'"
+                "SELECT AVG(rms), AVG(bd_raw_count), MAX(bd_max_det_prob) "
+                "FROM audio_levels "
+                "WHERE recorded_at > NOW() - INTERVAL '1 hour'"
             )
-            avg = cur.fetchone()[0]
-            if avg is not None:
-                out["audio_rms_avg_1m"] = round(float(avg), 6)
+            row = cur.fetchone()
+            if row:
+                if row[0] is not None:
+                    out["audio_rms_avg_1m"] = round(float(row[0]), 6)
+                if row[1] is not None:
+                    out["bd_raw_avg_1h"] = round(float(row[1]), 2)
+                if row[2] is not None:
+                    out["bd_max_det_prob_1h"] = round(float(row[2]), 3)
+
+            cur.execute(
+                "SELECT rejection_reason, COUNT(*) "
+                "FROM audio_levels "
+                "WHERE rejection_reason IS NOT NULL "
+                "  AND recorded_at > NOW() - INTERVAL '1 hour' "
+                "GROUP BY rejection_reason"
+            )
+            reasons = {}
+            for reason, cnt in cur.fetchall():
+                # Truncate tail like "validator:rms_too_low(0.002)" → "validator:rms_too_low"
+                clean = reason.split("(")[0] if reason else "unknown"
+                reasons[clean] = reasons.get(clean, 0) + int(cnt)
+            out["rejection_reasons_1h"] = reasons
     except Exception:
         pass
     return out

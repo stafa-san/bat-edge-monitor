@@ -362,23 +362,10 @@ async def main():
             # Capture audio segment
             audio_path = await capture.capture_segment(duration=segment_duration)
 
-            # Audio-level sample for dashboard troubleshooting (mic
-            # silent / undervolted surfaces here independent of any
-            # detection logic). Row inserted every segment; auto-
-            # expired after 7 days by sync-service.
+            # Compute audio stats first; we'll insert the audio_levels
+            # row below after detection runs so we can include BD stats
+            # and the rejection reason on the same row.
             rms, peak = _compute_audio_stats(audio_path)
-            if rms is not None:
-                try:
-                    conn = ensure_connection(conn)
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "INSERT INTO audio_levels (rms, peak) VALUES (%s, %s)",
-                            (rms, peak),
-                        )
-                    conn.commit()
-                except Exception as e:
-                    # Non-fatal: don't let audio-level telemetry kill capture.
-                    print(f"[BAT] audio_levels write failed: {e}")
 
             # Run detection (+ optionally classification)
             rejection_reason = None
@@ -392,6 +379,31 @@ async def main():
                 )
             else:
                 rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
+
+            # Audio-level + BD-stats + rejection sample for dashboard
+            # troubleshooting. One row per captured segment — auto-
+            # expired after 7 days by sync-service.
+            if rms is not None:
+                try:
+                    conn = ensure_connection(conn)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO audio_levels "
+                            "(rms, peak, bd_raw_count, bd_max_det_prob, "
+                            " bd_user_pass, rejection_reason) "
+                            "VALUES (%s, %s, %s, %s, %s, %s)",
+                            (
+                                rms, peak,
+                                (bd_stats or {}).get("raw_count"),
+                                (bd_stats or {}).get("max_det_prob"),
+                                (bd_stats or {}).get("count_above_user"),
+                                rejection_reason,
+                            ),
+                        )
+                    conn.commit()
+                except Exception as e:
+                    # Non-fatal: don't let telemetry kill capture.
+                    print(f"[BAT] audio_levels write failed: {e}")
 
             sync_id = str(uuid.uuid4())
             detection_time = datetime.utcnow()
