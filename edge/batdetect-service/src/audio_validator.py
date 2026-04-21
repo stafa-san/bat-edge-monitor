@@ -118,6 +118,13 @@ def has_bat_call_shape(
 
     if audio is None or audio.size == 0:
         return False, "empty_audio", stats
+    if end_time <= start_time:
+        return False, "invalid_bounds", stats
+    # Guard against non-finite values (NaN/Inf) — scipy polyfit's
+    # internal SVD raises LinAlgError on those, which would bubble
+    # up as an uncaught exception in the main capture loop.
+    if not np.isfinite(audio).all():
+        return False, "non_finite_audio", stats
 
     # Extract a padded window around the detection's time bounding box.
     # Padding matters — BatDetect2 gives tight bounding boxes (~10 ms
@@ -234,6 +241,8 @@ def is_likely_bat_call(
     """
     if audio is None or audio.size == 0:
         return False, "empty_audio"
+    if not np.isfinite(audio).all():
+        return False, "non_finite_audio"
 
     audio_f = audio.astype(np.float32, copy=False)
 
