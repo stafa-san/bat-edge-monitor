@@ -468,6 +468,167 @@ docker exec edge-db-1 psql -U postgres -d soundscape -c "
 
 ---
 
+## Verifying AudioMoth config from the Pi (probe script)
+
+The AudioMoth USB Microphone firmware doesn't expose its current config
+(gain, HPF cutoff, switch position) over USB — those are only readable
+via the AudioMoth USB Microphone App running on a macOS / Windows
+desktop. From the Pi we can **infer** the config by recording a short
+sample and analyzing the spectrum. That's what
+[`edge/scripts/probe_audiomoth.py`](edge/scripts/probe_audiomoth.py)
+does.
+
+### When to run it
+
+- Right after the advisor saves a new config in the app — sanity-check
+  that the change actually took effect.
+- After any "unplug 10 s, replug" power-cycle.
+- Any time the dashboard shows unexpected audio levels and you want to
+  know if it's the mic, the gain, or the filter.
+
+### How to run it
+
+**Option A — inside a transient container** (preferred — doesn't need
+host scipy/matplotlib):
+
+```bash
+# Stop batdetect so the USB audio device is free
+docker stop edge-batdetect-service-1
+
+# Run the probe — writes WAV + PNG + verdict
+docker run --rm \
+  --device /dev/snd --privileged \
+  -v /home/stafa/bat-edge-monitor/edge/scripts/probe_audiomoth.py:/probe.py:ro \
+  -v /tmp:/host_tmp \
+  edge-batdetect-service:latest \
+  python3 /probe.py --duration 10 --out /host_tmp
+
+# Restart batdetect
+docker start edge-batdetect-service-1
+```
+
+**Option B — on the host directly** (requires `python3-scipy python3-matplotlib`
+installed system-wide):
+
+```bash
+docker stop edge-batdetect-service-1
+python3 edge/scripts/probe_audiomoth.py --duration 10
+docker start edge-batdetect-service-1
+```
+
+### What it tells you
+
+```
+============================================================
+AudioMoth probe result
+============================================================
+Sample rate        : 256000 Hz
+Duration           : 10.00 s
+RMS amplitude      : 0.00843
+Peak amplitude     : 0.1821
+Inferred HPF cutoff: not detected (broadband content present)
+Noise floor        : -96.4 dB
+
+Band energy (dB, relative to in-band median):
+          0–2 kHz : +5.3 dB
+          2–8 kHz : +11.6 dB
+         8–15 kHz : +11.0 dB
+        15–25 kHz : +7.8 dB
+        25–50 kHz : +0.8 dB
+       50–100 kHz : -5.1 dB
+      100–128 kHz : -9.3 dB
+
+✓ Audio level is normal for outdoor ambient with a hardware high-pass filter (8–16 kHz cutoff).
+⚠ No HPF cutoff detected — low-frequency (< 8 kHz) content is reaching the mic.
+  Either no HPF is configured, or the switch is in DEFAULT.
+  Expected setting: CUSTOM + 8 kHz HPF.
+```
+
+### Reading the verdict
+
+- **"Inferred HPF cutoff: ~X kHz"** — the filter is working, cutoff is
+  at ~X kHz. Bat calls need content above 18 kHz preserved, so a cutoff
+  at 8–16 kHz is fine. A cutoff above 20 kHz will clip real calls.
+- **"Inferred HPF cutoff: not detected"** — significant energy exists
+  below 8 kHz. Either no HPF is configured or the switch is in
+  DEFAULT. Tell the advisor to verify the switch position.
+- **Band energy** — each row is the median power in that band,
+  relative to the 20–80 kHz bat-band median. If 2–8 kHz is **higher**
+  than 25–50 kHz, sub-bat content dominates (HPF not working). If
+  2–8 kHz is **lower** than 25–50 kHz, HPF is working.
+- **RMS verdict**:
+  - `< 0.001` → mic silent
+  - `0.001–0.003` → very low, check gain or obstruction
+  - `0.003–0.02` → normal outdoor ambient with HPF
+  - `0.02–0.1` → healthy / slightly loud
+  - `> 0.1` → clipping risk
+
+### Limitations
+
+- This script **cannot** read the AudioMoth's switch position or gain
+  setting directly. It can only show what the device is currently
+  outputting. If gain is "Medium-High" vs "High" and the environment
+  is quiet, RMS values can overlap — you may not be able to
+  distinguish the two.
+- The inferred HPF cutoff is a rough estimate (±2 kHz). A sharp 8 kHz
+  filter may register as 6 kHz or 10 kHz depending on ambient spectral
+  character.
+- If the site is genuinely silent (e.g. middle of the night, no wind,
+  no distant traffic), the probe won't have enough dynamic range to
+  measure the HPF. Run it during daylight or when there's ambient
+  broadband content to test against.
+
+### Machine-readable output
+
+The last line of the probe's stdout is `PROBE_JSON { ... }` with the
+full result as JSON, so you can pipe to `jq` or save to a file for
+trend tracking. Example:
+
+```bash
+python3 edge/scripts/probe_audiomoth.py --duration 10 --out /tmp \
+  | grep -oP '(?<=^PROBE_JSON ).*' \
+  | jq
+```
+
+---
+
+## Sub-threshold BatDetect2 logging
+
+A silent pipeline ("No bat calls detected" every segment) has two
+very different root causes that used to look identical in the logs.
+As of 2026-04-21 the heartbeat log line now includes diagnostic
+stats from the detector itself:
+
+```
+# Detector saw literally nothing
+[BAT] #40 | No bat calls detected (bd_raw=0)
+
+# Detector saw 3 weak sub-threshold emissions, best was 0.22
+[BAT] #50 | No bat calls detected (bd_raw=3 max=0.22 user_pass=0 top=Pipistrellus_pipi)
+
+# Detector saw 8 emissions, 0 passed the DETECTION_THRESHOLD=0.5 gate
+[BAT] #60 | No bat calls detected (bd_raw=8 max=0.48 user_pass=0 top=Nyctalus_noctu)
+```
+
+Interpretation:
+
+| Pattern over 1 hour | Meaning | Action |
+| --- | --- | --- |
+| Every line `bd_raw=0` | Mic or detector sees nothing | Check audio level + mic (section 5.2) |
+| `bd_raw` > 0, `max` < 0.2 | Detector sees noise, not bats | Probably noise. Wait for real bat activity. |
+| `bd_raw` > 0, `max` 0.3–0.5 | Detector sees weak but possibly real signal | Consider lowering `DETECTION_THRESHOLD` (see DETECTION_TUNING_PLAYBOOK.md) |
+| `bd_raw` > 0, `user_pass` > 0 | Detector passed threshold — downstream gate must be dropping it | Check rejection reason log lines |
+
+### Command to summarize the last N hours
+
+```bash
+docker logs edge-batdetect-service-1 --since 6h 2>&1 \
+  | grep -oP 'bd_raw=\d+ max=[\d.]+' \
+  | sort | uniq -c | sort -rn | head -20
+```
+
+---
+
 ## Command reference — quick diagnostic one-liners
 
 ```bash
