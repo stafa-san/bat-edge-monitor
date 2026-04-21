@@ -176,10 +176,28 @@ function rmsColor(v: number | null | undefined): string {
   return "text-green-600";
 }
 
-function rmsSubLabel(v: number | null | undefined): string | undefined {
+function rmsSubLabel(
+  v: number | null | undefined,
+  power: Pick<DeviceStatus, "undervoltNow" | "undervoltSinceBoot"> | undefined,
+): string | undefined {
   if (v == null) return undefined;
-  if (v < 0.002) return "mic silent — check hardware";
-  if (v < 0.01) return "very quiet — possible undervolt";
+  // Power-related phrasing only when undervoltage is actually implicated.
+  // When power is clean we don't want to mislead about the cause of
+  // low levels — outdoor ambient with the 8 kHz hardware HPF legitimately
+  // sits in the 0.005–0.01 range.
+  const undervoltFlag =
+    power?.undervoltNow === true || power?.undervoltSinceBoot === true;
+  if (v < 0.002) {
+    return undervoltFlag
+      ? "mic silent — check PSU"
+      : "mic silent — check hardware";
+  }
+  if (v < 0.005) {
+    return undervoltFlag
+      ? "very quiet — PSU may be dipping"
+      : "very quiet — normal-low ambient";
+  }
+  if (v < 0.01) return "listening — low ambient";
   if (v > 0.3) return "loud / clipping risk";
   return "normal ambient";
 }
@@ -606,6 +624,33 @@ export function DeviceHealth({
         </div>
       )}
 
+      {/* ── Stale-data banner: device is offline, so every metric below is
+          the last value we received before it went silent. Banner makes
+          that explicit instead of letting stale numbers look live. ── */}
+      {isOffline && lastSeenDate && (
+        <div className="mb-4 px-4 py-3 rounded-lg border border-gray-300 bg-gray-100 flex items-start gap-3">
+          <span className="text-xl">🕒</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-700">
+              Showing last-known values
+            </p>
+            <p className="text-xs text-gray-600 mt-0.5">
+              The Pi hasn't reported in {timeAgo(lastSeenDate)}. CPU,
+              memory, internet, audio level and everything below reflect
+              the state at {lastSeenDate.toLocaleString([], {
+                month: "short", day: "numeric",
+                hour: "2-digit", minute: "2-digit",
+              })}, not right now.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Wrap Pi + AudioMoth metrics in a stale-styled block when offline so
+          the numbers are visibly "not live" rather than indistinguishable
+          from a healthy reading. */}
+      <div className={isOffline ? "opacity-60 grayscale" : ""}>
+
       {/* ── Raspberry Pi ── */}
       <div className="mb-5">
         <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-1.5">
@@ -704,8 +749,8 @@ export function DeviceHealth({
             value={formatRms(status.audioRmsLatest)}
             sub={
               status.audioRmsAvg1m != null
-                ? `${rmsSubLabel(status.audioRmsLatest) ?? ""} · 1m avg ${formatRms(status.audioRmsAvg1m)}`.trim()
-                : rmsSubLabel(status.audioRmsLatest)
+                ? `${rmsSubLabel(status.audioRmsLatest, status) ?? ""} · 1m avg ${formatRms(status.audioRmsAvg1m)}`.trim()
+                : rmsSubLabel(status.audioRmsLatest, status)
             }
             color={rmsColor(status.audioRmsLatest)}
           />
@@ -722,6 +767,8 @@ export function DeviceHealth({
           />
         </div>
       </div>
+
+      </div>{/* end stale-styled Pi+AudioMoth wrapper */}
 
       {/* ── View History toggle ── */}
       <div className="mt-4 flex justify-center">
