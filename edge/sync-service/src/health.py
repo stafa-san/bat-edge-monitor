@@ -7,7 +7,9 @@ AudioMoth activity and database statistics.
 """
 
 import os
+import re
 import socket
+import subprocess
 import time
 import urllib.request
 
@@ -120,6 +122,134 @@ def check_audiomoth(conn) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Power / undervoltage — Raspberry Pi vcgencmd wrapper
+# ---------------------------------------------------------------------------
+#
+# On Pi 5, we run ``vcgencmd`` from the sync-service container. The binary
+# is bind-mounted in from the host at /usr/bin/vcgencmd and talks to the
+# firmware via /dev/vcio (mounted as a device in docker-compose.yml).
+#
+# Throttled flag bits (from the Raspberry Pi docs):
+#   bit 0  (0x1)     = Under-voltage right now
+#   bit 1  (0x2)     = ARM frequency capped right now
+#   bit 2  (0x4)     = Currently throttled
+#   bit 3  (0x8)     = Soft temperature limit active
+#   bit 16 (0x10000) = Under-voltage has occurred since last reboot
+#   bit 17 (0x20000) = ARM frequency capping has occurred since last reboot
+#   bit 18 (0x40000) = Throttling has occurred since last reboot
+#   bit 19 (0x80000) = Soft temperature limit has occurred since last reboot
+
+_VCGENCMD_PATH = "/usr/bin/vcgencmd"
+_VCGENCMD_TIMEOUT_SEC = 2
+
+
+def _vcgencmd(*args) -> str | None:
+    """Run vcgencmd with *args* and return stdout, or None on failure."""
+    if not os.path.exists(_VCGENCMD_PATH):
+        return None
+    try:
+        res = subprocess.run(
+            [_VCGENCMD_PATH, *args],
+            capture_output=True, text=True,
+            timeout=_VCGENCMD_TIMEOUT_SEC,
+        )
+        if res.returncode != 0:
+            return None
+        return res.stdout.strip()
+    except Exception:
+        return None
+
+
+def get_power_status() -> dict:
+    """Return undervoltage / throttling / voltage info.
+
+    Safe to call every health tick; returns a dict of None values when
+    vcgencmd isn't available (e.g. running on a dev laptop).
+    """
+    out = {
+        "throttled_hex": None,
+        "undervolt_now": None,
+        "undervolt_since_boot": None,
+        "throttled_now": None,
+        "throttled_since_boot": None,
+        "freq_capped_now": None,
+        "freq_capped_since_boot": None,
+        "core_voltage": None,
+        "ext5v_voltage": None,
+    }
+
+    throttled = _vcgencmd("get_throttled")
+    if throttled:
+        # Format: "throttled=0x50000"
+        m = re.search(r"throttled=(0x[0-9a-fA-F]+)", throttled)
+        if m:
+            val = int(m.group(1), 16)
+            out["throttled_hex"] = m.group(1)
+            out["undervolt_now"] = bool(val & 0x1)
+            out["freq_capped_now"] = bool(val & 0x2)
+            out["throttled_now"] = bool(val & 0x4)
+            out["undervolt_since_boot"] = bool(val & 0x10000)
+            out["freq_capped_since_boot"] = bool(val & 0x20000)
+            out["throttled_since_boot"] = bool(val & 0x40000)
+
+    core = _vcgencmd("measure_volts", "core")
+    if core:
+        m = re.search(r"volt=([0-9.]+)V", core)
+        if m:
+            out["core_voltage"] = round(float(m.group(1)), 3)
+
+    ext = _vcgencmd("pmic_read_adc", "EXT5V_V")
+    if ext:
+        # Format: "     EXT5V_V volt(24)=4.77978000V"
+        m = re.search(r"volt\(\d+\)=([0-9.]+)V", ext)
+        if m:
+            out["ext5v_voltage"] = round(float(m.group(1)), 3)
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Audio RMS — surfaced from the batdetect-service via the audio_levels table
+# ---------------------------------------------------------------------------
+#
+# batdetect-service writes one row per captured segment with the RMS and
+# peak amplitude of the loaded (post-HPF) audio. We surface the most
+# recent sample plus a 1-minute moving average for the dashboard so a
+# silent / undervolted microphone is visible at a glance.
+
+def get_audio_levels(conn) -> dict:
+    """Latest + recent-average audio levels from the audio_levels table."""
+    out = {
+        "audio_rms_latest": None,
+        "audio_rms_avg_1m": None,
+        "audio_peak_latest": None,
+        "audio_levels_last_at": None,
+    }
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT rms, peak, recorded_at FROM audio_levels "
+                "ORDER BY recorded_at DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            if row:
+                out["audio_rms_latest"] = round(float(row[0]), 6) if row[0] is not None else None
+                out["audio_peak_latest"] = round(float(row[1]), 6) if row[1] is not None else None
+                out["audio_levels_last_at"] = row[2]
+
+            cur.execute(
+                "SELECT AVG(rms) FROM audio_levels "
+                "WHERE recorded_at > NOW() - INTERVAL '1 minute'"
+            )
+            avg = cur.fetchone()[0]
+            if avg is not None:
+                out["audio_rms_avg_1m"] = round(float(avg), 6)
+    except Exception:
+        pass
+    return out
+
+
 def get_audiomoth_hw_sample_rate() -> int | None:
     """Read the AudioMoth's native hardware sample rate from /proc/asound.
 
@@ -204,6 +334,8 @@ def collect_all_metrics(conn) -> dict:
     internet_ok, internet_latency = check_internet()
     audiomoth_ok = check_audiomoth(conn)
     audiomoth_hw_rate = get_audiomoth_hw_sample_rate() if audiomoth_ok else None
+    power = get_power_status()
+    audio_levels = get_audio_levels(conn)
     db = get_db_stats(conn)
     errors = get_error_count(conn)
 
@@ -222,5 +354,7 @@ def collect_all_metrics(conn) -> dict:
         "audiomoth_connected": audiomoth_ok,
         "audiomoth_hw_sample_rate": audiomoth_hw_rate,
         "capture_errors_1h": errors,
+        **power,
+        **audio_levels,
         **db,
     }

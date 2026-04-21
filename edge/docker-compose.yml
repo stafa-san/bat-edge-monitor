@@ -79,6 +79,9 @@ services:
 
   sync-service:
     build: ./sync-service
+    devices:
+      # VideoCore I/O for vcgencmd (Pi 5 power/throttling queries).
+      - /dev/vcio:/dev/vcio
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=db
@@ -107,6 +110,11 @@ services:
       - /proc/loadavg:/host/loadavg:ro
       - /sys/class/thermal/thermal_zone0/temp:/host/cpu_temp:ro
       - /proc/asound:/host/asound:ro
+      # vcgencmd for Pi 5 power/throttling diagnostics. The binary is
+      # bind-mounted from the host (it's statically linked enough to
+      # run inside python:3.11-slim). Needs /dev/vcio to talk to the
+      # VideoCore firmware.
+      - /usr/bin/vcgencmd:/usr/bin/vcgencmd:ro
       - bat_audio:/bat_audio
       - control_flags:/control
       # rclone OAuth config from the host. Mounted read-only so the

@@ -256,6 +256,21 @@ def run_migrations(conn):
                 recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
         """)
+        # Audio RMS / peak level per segment — one row per capture from
+        # batdetect-service. Surfaced on the dashboard so a silent or
+        # undervolted microphone is visible without SSH.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS audio_levels (
+                id SERIAL PRIMARY KEY,
+                rms DOUBLE PRECISION NOT NULL,
+                peak DOUBLE PRECISION NOT NULL,
+                recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audio_levels_recorded_at
+            ON audio_levels(recorded_at DESC)
+        """)
         # Add audio columns to bat_detections if they don't exist yet
         cur.execute("""
             DO $$
@@ -418,6 +433,20 @@ def sync_device_status(conn, db):
             "internetLatencyMs": metrics["internet_latency_ms"],
             "audiomothConnected": metrics["audiomoth_connected"],
             "audiomothHwSampleRate": metrics["audiomoth_hw_sample_rate"],
+            # Power diagnostics (Pi 5 via vcgencmd)
+            "throttledHex": metrics.get("throttled_hex"),
+            "undervoltNow": metrics.get("undervolt_now"),
+            "undervoltSinceBoot": metrics.get("undervolt_since_boot"),
+            "throttledNow": metrics.get("throttled_now"),
+            "throttledSinceBoot": metrics.get("throttled_since_boot"),
+            "freqCappedNow": metrics.get("freq_capped_now"),
+            "freqCappedSinceBoot": metrics.get("freq_capped_since_boot"),
+            "coreVoltage": metrics.get("core_voltage"),
+            "ext5vVoltage": metrics.get("ext5v_voltage"),
+            # Audio RMS (mic level) for troubleshooting
+            "audioRmsLatest": metrics.get("audio_rms_latest"),
+            "audioRmsAvg1m": metrics.get("audio_rms_avg_1m"),
+            "audioPeakLatest": metrics.get("audio_peak_latest"),
             "captureErrors1h": metrics["capture_errors_1h"],
             "dbSizeMb": metrics["db_size_mb"],
             "classificationsTotal": metrics["classifications_total"],
@@ -575,6 +604,10 @@ def cleanup_old_data(conn):
             )
             cur.execute(
                 "DELETE FROM capture_errors "
+                "WHERE recorded_at < NOW() - INTERVAL '7 days'"
+            )
+            cur.execute(
+                "DELETE FROM audio_levels "
                 "WHERE recorded_at < NOW() - INTERVAL '7 days'"
             )
         conn.commit()
