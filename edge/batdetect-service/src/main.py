@@ -17,7 +17,7 @@ from scipy.io import wavfile
 from scipy.signal import butter, sosfiltfilt
 
 from src import storage
-from src.audio_validator import is_likely_bat_call
+from src.audio_validator import has_bat_call_shape, is_likely_bat_call
 from src.classifier import classify, load_groups_classifier
 
 
@@ -182,6 +182,7 @@ def _run_batdetect_with_classifier(
     audio_path, classifier_model, classifier_ckpt, config, hpf_sos=None,
     min_pred_conf: float = 0.6,
     validator_cfg: dict | None = None,
+    fm_sweep_cfg: dict | None = None,
     user_threshold: float = 0.5,
 ):
     """Returns ``(rows_data, rejection_reason, stats)``.
@@ -245,6 +246,29 @@ def _run_batdetect_with_classifier(
     if not kept:
         return [], "all_below_min_pred_conf", stats
 
+    # FM-sweep + low-band-ratio per-detection shape filter. Rejects
+    # detections whose audio inside the bounding box looks like a
+    # broadband click (insect, rain, mechanical) rather than a real
+    # downward FM echolocation pulse.
+    if fm_sweep_cfg and fm_sweep_cfg.get("enabled", True):
+        passed = []
+        shape_rejections = []
+        for det, pred in kept:
+            ok, reason, shape_stats = has_bat_call_shape(
+                audio, int(config.get("target_samp_rate", 256000)),
+                det.get("start_time", 0.0), det.get("end_time", 0.0),
+                min_slope_khz_per_ms=fm_sweep_cfg.get("min_slope_khz_per_ms", -0.1),
+                max_low_band_ratio=fm_sweep_cfg.get("max_low_band_ratio", 0.5),
+            )
+            if ok:
+                passed.append((det, pred))
+            else:
+                shape_rejections.append(reason)
+        if not passed:
+            reason = shape_rejections[0] if shape_rejections else "shape_all_rejected"
+            return [], f"shape:{reason}", stats
+        kept = passed
+
     # Audio-level validator — "is this actually a bat call?"
     # Runs only when the classifier has at least one confident pick
     # so we don't waste cycles on silence. Rate for the spectrogram
@@ -282,6 +306,14 @@ async def main():
         "min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.005")),
         "min_snr_db": float(os.getenv("VALIDATOR_MIN_SNR_DB", "10.0")),
         "min_burst_ratio": float(os.getenv("VALIDATOR_MIN_BURST_RATIO", "3.0")),
+    }
+    # Per-detection FM-sweep shape filter — 4th gate. Rejects detections
+    # whose audio is broadband (insect clicks, rain) rather than real
+    # downward FM echolocation.
+    fm_sweep_cfg = {
+        "enabled": os.getenv("FM_SWEEP_ENABLED", "true").lower() == "true",
+        "min_slope_khz_per_ms": float(os.getenv("FM_SWEEP_MIN_SLOPE", "-0.1")),
+        "max_low_band_ratio": float(os.getenv("FM_SWEEP_MAX_LOW_BAND_RATIO", "0.5")),
     }
 
     if enable_storage_tiering and not enable_classifier:
@@ -338,6 +370,15 @@ async def main():
     else:
         print("[BAT] Audio validator disabled (VALIDATOR_ENABLED=false)")
 
+    if fm_sweep_cfg["enabled"]:
+        print(
+            f"[BAT] FM-sweep shape filter enabled — "
+            f"min_slope={fm_sweep_cfg['min_slope_khz_per_ms']} kHz/ms, "
+            f"max_low_band_ratio={fm_sweep_cfg['max_low_band_ratio']}"
+        )
+    else:
+        print("[BAT] FM-sweep shape filter disabled (FM_SWEEP_ENABLED=false)")
+
     conn = get_db_connection()
 
     print(
@@ -375,6 +416,7 @@ async def main():
                     audio_path, classifier_model, classifier_ckpt, config,
                     hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
                     validator_cfg=validator_cfg,
+                    fm_sweep_cfg=fm_sweep_cfg,
                     user_threshold=threshold,
                 )
             else:
@@ -496,7 +538,10 @@ async def main():
                 # Validator rejections are logged every time so we can
                 # see what's being filtered; pure no-detection heartbeats
                 # stay at 1-per-10-segments to keep the log quiet.
-                if rejection_reason and rejection_reason.startswith("validator:"):
+                if rejection_reason and (
+                    rejection_reason.startswith("validator:")
+                    or rejection_reason.startswith("shape:")
+                ):
                     bd_tail = _format_bd_stats(bd_stats)
                     print(f"[BAT] #{segment_count} | rejected by {rejection_reason}{bd_tail}")
                 elif segment_count % 10 == 0:

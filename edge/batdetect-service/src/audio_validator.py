@@ -69,6 +69,120 @@ def _bat_band_spectrogram(
     return Sxx[band, :]
 
 
+def has_bat_call_shape(
+    audio: np.ndarray,
+    sr: int,
+    start_time: float,
+    end_time: float,
+    min_slope_khz_per_ms: float = -0.1,
+    max_low_band_ratio: float = 0.5,
+    low_band_cutoff_hz: float = 15000.0,
+    pad_ms: float = 3.0,
+) -> Tuple[bool, str, dict]:
+    """Per-detection shape check — distinguishes real echolocation from
+    broadband noise (insect clicks, mechanical contacts, rain drops).
+
+    Runs on the local audio window around BatDetect2's detection bounding
+    box. Checks TWO things that characterise real bat calls but NOT
+    broadband noise:
+
+    1. **Low-band-energy ratio.** A real bat call concentrates its energy
+       in the ultrasonic band (≥ 15 kHz). Broadband clicks dump energy
+       across the full spectrum including sub-bat frequencies. If the
+       0-15 kHz power inside the call window is comparable to the
+       15+ kHz power, it's not a bat — it's a click.
+
+    2. **Downward FM sweep.** Bat echolocation pulses sweep downward in
+       frequency over their duration (e.g. EPFU sweeps 40 → 25 kHz over
+       ~10 ms). A broadband click has near-zero slope and scattered
+       peak frequencies — its linear fit will be flat or chaotic.
+
+    Returns ``(is_bat_call, reason, stats)``. ``stats`` always carries
+    the measured numbers so the caller can log them for tuning.
+    """
+    stats = {
+        "slope_khz_per_ms": None,
+        "fit_r2": None,
+        "low_band_ratio": None,
+        "n_frames_used": 0,
+    }
+
+    if audio is None or audio.size == 0:
+        return False, "empty_audio", stats
+
+    # Extract a padded window around the detection's time bounding box
+    pad = pad_ms / 1000.0
+    lo = max(0, int((start_time - pad) * sr))
+    hi = min(len(audio), int((end_time + pad) * sr))
+    window = audio[lo:hi]
+    if len(window) < 64:
+        return False, "window_too_short", stats
+
+    # Spectrogram with fine time resolution (~0.5 ms windows at 256 kHz)
+    from scipy.signal import spectrogram
+    nperseg = max(int(0.0005 * sr), 64)
+    noverlap = int(0.75 * nperseg)
+    freqs, times, Sxx = spectrogram(
+        window.astype(np.float32), fs=sr, window="hann",
+        nperseg=nperseg, noverlap=noverlap, mode="magnitude",
+    )
+
+    # ---- Low-band energy ratio -------------------------------------------
+    low_band = freqs < low_band_cutoff_hz
+    bat_band = freqs >= low_band_cutoff_hz
+    if not low_band.any() or not bat_band.any():
+        return False, "bad_frequency_split", stats
+
+    low_power = float(np.median(np.max(Sxx[low_band, :], axis=0)))
+    bat_power = float(np.median(np.max(Sxx[bat_band, :], axis=0)))
+    if bat_power <= 0:
+        return False, "bat_band_silent", stats
+
+    low_band_ratio = low_power / bat_power
+    stats["low_band_ratio"] = round(low_band_ratio, 3)
+
+    if low_band_ratio > max_low_band_ratio:
+        return False, f"broadband_noise(lowband_ratio={low_band_ratio:.2f})", stats
+
+    # ---- FM sweep slope (linear regression on per-frame peak freq) -------
+    bat_Sxx = Sxx[bat_band, :]
+    bat_freqs = freqs[bat_band]
+    if bat_Sxx.size == 0 or bat_Sxx.shape[1] < 4:
+        return False, "too_few_frames", stats
+
+    # Keep only frames with significant bat-band energy
+    frame_max = np.max(bat_Sxx, axis=0)
+    threshold_linear = float(np.median(frame_max)) * 2.0
+    significant = frame_max > threshold_linear
+
+    if significant.sum() < 4:
+        return False, "too_few_significant_frames", stats
+
+    peak_freqs = bat_freqs[np.argmax(bat_Sxx, axis=0)]
+    t_sig = times[significant]
+    f_sig = peak_freqs[significant]
+    stats["n_frames_used"] = int(significant.sum())
+
+    # Polyfit; slope is in Hz/s. Convert to kHz/ms (same thing: / 1e6).
+    slope_hz_per_s, intercept = np.polyfit(t_sig, f_sig, 1)
+    slope_khz_per_ms = slope_hz_per_s / 1_000_000.0
+    stats["slope_khz_per_ms"] = round(slope_khz_per_ms, 3)
+
+    # R² — check the fit is actually coherent (not chaotic scatter)
+    predicted = slope_hz_per_s * t_sig + intercept
+    ss_res = float(np.sum((f_sig - predicted) ** 2))
+    ss_tot = float(np.sum((f_sig - f_sig.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    stats["fit_r2"] = round(r2, 3)
+
+    # Real bat calls sweep down. min_slope_khz_per_ms is negative;
+    # the measured slope must be more negative than that threshold.
+    if slope_khz_per_ms > min_slope_khz_per_ms:
+        return False, f"not_downward_sweep(slope={slope_khz_per_ms:+.2f}kHz/ms)", stats
+
+    return True, "ok", stats
+
+
 def is_likely_bat_call(
     audio: Optional[np.ndarray],
     sr: int,

@@ -62,6 +62,11 @@ services:
       - VALIDATOR_MIN_RMS=${VALIDATOR_MIN_RMS:-0.005}
       - VALIDATOR_MIN_SNR_DB=${VALIDATOR_MIN_SNR_DB:-10.0}
       - VALIDATOR_MIN_BURST_RATIO=${VALIDATOR_MIN_BURST_RATIO:-3.0}
+      # Per-detection FM-sweep + low-band shape filter (4th gate).
+      # Rejects broadband clicks that otherwise fool the classifier.
+      - FM_SWEEP_ENABLED=${FM_SWEEP_ENABLED:-true}
+      - FM_SWEEP_MIN_SLOPE=${FM_SWEEP_MIN_SLOPE:--0.1}
+      - FM_SWEEP_MAX_LOW_BAND_RATIO=${FM_SWEEP_MAX_LOW_BAND_RATIO:-0.5}
       - UPLOAD_BAT_AUDIO=false
       - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
       - MODEL_PATH=/app/models/groups_model.pt
