@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY edge/analysis-api/src/ ./src/
 COPY docker/models/groups_model.pt /app/models/groups_model.pt
 
-EXPOSE 8080
-
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Firebase-driven upload worker. The FastAPI HTTP app at src.main still
+# exists as dead code — flip this CMD back to `uvicorn src.main:app`
+# to restore LAN HTTP uploads.
+CMD ["python", "-m", "src.worker"]

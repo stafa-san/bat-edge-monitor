@@ -179,6 +179,11 @@ services:
     restart: unless-stopped
 
   analysis-api:
+    # Firebase-driven upload worker. Polls Firestore ``uploadJobs`` for
+    # pending .wav uploads posted by the dashboard, downloads them from
+    # Firebase Storage, runs BatDetect2 + groups classifier, writes
+    # detections to Postgres AND Firestore. No exposed HTTP port —
+    # uploads flow through Firebase so they work from any network.
     build:
       context: ..
       dockerfile: edge/analysis-api/Dockerfile
@@ -192,8 +197,12 @@ services:
       - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
       - MODEL_PATH=/app/models/groups_model.pt
       - MODEL_VERSION=${MODEL_VERSION:-groups_v1_post_epfu_partial_2026-04-17}
-    ports:
-      - "8080:8080"
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-bat-edge-monitor.firebasestorage.app}
+      - UPLOAD_POLL_INTERVAL_SEC=${UPLOAD_POLL_INTERVAL_SEC:-5}
+    volumes:
+      # Reuses sync-service's Firebase Admin SDK credentials.
+      - ./sync-service/serviceAccountKey.json:/app/serviceAccountKey.json:ro
     depends_on:
       db:
         condition: service_healthy
