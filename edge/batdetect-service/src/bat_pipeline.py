@@ -55,10 +55,19 @@ PIPELINE_VERSION = "v1-2026-04-22"
 # downstream, so behaviour is unchanged.
 DIAGNOSTIC_BD_THRESHOLD = 0.1
 
-# Matches training: BatDetect2 features were filtered at det_prob > 0.5
-# when the classifier head was trained. Inference uses the same
-# threshold to keep classifier inputs in the training distribution.
-CLASSIFIER_DET_THRESHOLD = 0.5
+# Tuned 2026-04-23 after user's validation experiment on real Ohio
+# AudioMoth recordings: at the original training-distribution threshold
+# (0.5), UK-trained BatDetect2 missed genuine NA bat passes entirely
+# (e.g. 2MU01134_20240527_005517.wav — 0 detections where the
+# spectrogram clearly showed ~60 rhythmic FM pulses). Lowering to 0.3
+# recovered 58 detections on that file and the downstream gates
+# (classifier min_pred_conf=0.6, FM-sweep shape filter, audio-level
+# validator) still correctly rejected known-bad non-bat clips.
+#
+# Trade-off made explicit: classifier inputs in the 0.3-0.5 range are
+# slightly outside the training distribution, so the three downstream
+# gates are load-bearing. Don't remove them without re-validating.
+CLASSIFIER_DET_THRESHOLD = 0.3
 
 
 # -----------------------------------------------------------------------------
