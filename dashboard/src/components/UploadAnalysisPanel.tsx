@@ -36,6 +36,14 @@ interface UploadJob {
   speciesFound?: string[];
   durationSeconds?: number;
   errorMessage?: string;
+  // Populated by the Cloud Function when a gate rejected the whole
+  // segment (detectionCount=0). ``rejectionMessage`` is the UI-ready
+  // sentence ("Audio appears to be silence…"); ``rejectionReason`` is
+  // the machine code (e.g. "validator:rms_too_low(0.0012)") useful
+  // for tuning and logs.
+  rejectionReason?: string;
+  rejectionMessage?: string;
+  pipelineVersion?: string;
   // Client-only — present on the synthetic "uploading" row before the
   // Firestore doc exists.
   progress?: number;
@@ -73,16 +81,24 @@ function statusBadge(job: UploadJob): { label: string; className: string } {
       };
     case "processing":
       return {
-        label: "analyzing on Pi…",
+        label: "analyzing…",
         className: "bg-yellow-100 text-yellow-700 border-yellow-200",
       };
-    case "done":
+    case "done": {
+      const count = job.detectionCount ?? 0;
+      if (count > 0) {
+        return {
+          label: `${count} bat call${count === 1 ? "" : "s"} found`,
+          className: "bg-green-100 text-green-700 border-green-200",
+        };
+      }
+      // Zero-detection but successful analysis — distinguish visually
+      // so it doesn't look like a pending job or an error.
       return {
-        label: `${job.detectionCount ?? 0} bat call${
-          (job.detectionCount ?? 0) === 1 ? "" : "s"
-        } found`,
-        className: "bg-green-100 text-green-700 border-green-200",
+        label: "no bat calls",
+        className: "bg-slate-100 text-slate-700 border-slate-200",
       };
+    }
     case "error":
       return {
         label: "error",
@@ -347,9 +363,17 @@ export function UploadAnalysisPanel() {
                       </p>
                     )}
                     {job.status === "done" && dets.length === 0 && (
-                      <p className="text-xs text-gray-400 italic mt-2">
-                        No bat calls detected in this recording.
-                      </p>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs text-slate-700">
+                          {job.rejectionMessage ??
+                            "No bat calls detected in this recording."}
+                        </p>
+                        {job.rejectionReason && (
+                          <p className="text-[10px] font-mono text-slate-400">
+                            reason: {job.rejectionReason}
+                          </p>
+                        )}
+                      </div>
                     )}
                     {dets.length > 0 && (
                       <div className="space-y-2 mt-2">
@@ -365,8 +389,8 @@ export function UploadAnalysisPanel() {
                     {(job.status === "pending" || job.status === "processing") && (
                       <p className="text-xs text-gray-400 italic mt-2">
                         {job.status === "pending"
-                          ? "Waiting for the Pi to pick this up…"
-                          : "BatDetect2 is running on the Pi — detections will appear here."}
+                          ? "Waiting for the analyzer to pick this up…"
+                          : "BatDetect2 is running — detections will appear here."}
                       </p>
                     )}
                   </div>
