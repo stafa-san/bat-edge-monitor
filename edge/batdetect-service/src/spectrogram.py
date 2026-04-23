@@ -36,6 +36,7 @@ def generate_spectrogram(
     figsize: Tuple[float, float] = (12.0, 4.0),
     dpi: int = 100,
     title: Optional[str] = None,
+    with_boxes: bool = True,
 ) -> None:
     """Render a labelled spectrogram to ``out_path`` (PNG).
 
@@ -98,23 +99,26 @@ def generate_spectrogram(
     cbar.set_label("Magnitude (dB)", fontsize=9)
     cbar.ax.tick_params(labelsize=8)
 
-    # Overlay detection boxes. Text labels intentionally omitted — in
-    # dense passes (20+ calls in 15 s) overlapping labels turn the spec
-    # into unreadable graffiti. Instead we rely on the detection list
-    # below the spec (sorted by start time, 1:1 correspondence with
-    # left-to-right box order) to carry species + confidence metadata.
-    for det, _pred in detection_pairs:
-        start = float(det.get("start_time", 0.0))
-        end = float(det.get("end_time", start))
-        lo_khz = float(det.get("low_freq", 0.0)) / 1000.0
-        hi_khz = float(det.get("high_freq", 0.0)) / 1000.0
-        if end <= start or hi_khz <= lo_khz:
-            continue
-        rect = Rectangle(
-            (start, lo_khz), end - start, hi_khz - lo_khz,
-            linewidth=1.2, edgecolor="#ff3b3b", facecolor="none", alpha=0.95,
-        )
-        ax.add_patch(rect)
+    # Overlay detection boxes only when ``with_boxes=True``. We now
+    # render BOTH a clean version (no boxes) and an annotated one so the
+    # dashboard can toggle them; see functions/main.py. Text labels are
+    # intentionally omitted either way — in dense passes (20+ calls in
+    # 15 s) overlapping labels turn the spec into unreadable graffiti,
+    # and the dashboard detection list below the spec already carries
+    # species + confidence metadata in 1:1 time order with the boxes.
+    if with_boxes:
+        for det, _pred in detection_pairs:
+            start = float(det.get("start_time", 0.0))
+            end = float(det.get("end_time", start))
+            lo_khz = float(det.get("low_freq", 0.0)) / 1000.0
+            hi_khz = float(det.get("high_freq", 0.0)) / 1000.0
+            if end <= start or hi_khz <= lo_khz:
+                continue
+            rect = Rectangle(
+                (start, lo_khz), end - start, hi_khz - lo_khz,
+                linewidth=1.2, edgecolor="#ff3b3b", facecolor="none", alpha=0.95,
+            )
+            ax.add_patch(rect)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
