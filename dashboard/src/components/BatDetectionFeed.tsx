@@ -25,7 +25,7 @@ export function BatDetectionFeed({ detections, totalDetections }: BatDetectionFe
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-900">
-          🦇 Bat Detection Feed
+          🦇 Live Bat Detection Feed
         </h2>
         {detections.length > 0 && (
           <span className="text-sm text-purple-600 font-medium">

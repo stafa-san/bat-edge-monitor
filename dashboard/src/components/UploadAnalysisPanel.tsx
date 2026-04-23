@@ -10,7 +10,6 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  where,
   Timestamp,
 } from "firebase/firestore";
 
@@ -20,7 +19,6 @@ import { BatDetectionRow } from "./BatDetectionRow";
 
 const MAX_BYTES = 100 * 1024 * 1024;
 const RECENT_LIMIT = 25;
-const DETECTIONS_LIMIT = 500;
 
 type JobStatus = "uploading" | "pending" | "processing" | "done" | "error";
 
@@ -107,16 +105,35 @@ function statusBadge(job: UploadJob): { label: string; className: string } {
   }
 }
 
-export function UploadAnalysisPanel() {
+interface UploadAnalysisPanelProps {
+  // Upload-sourced detection rows, sourced by the parent's single
+  // ``batDetections`` subscription. The panel filters by ``syncId``
+  // to group per-job. Passed in rather than subscribed here so we
+  // stay on a single Firestore index and the parent/children never
+  // disagree about which rows exist.
+  batDetections: any[];
+}
+
+export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [recentJobs, setRecentJobs] = useState<UploadJob[]>([]);
-  const [detectionsBySyncId, setDetectionsBySyncId] = useState<
-    Map<string, any[]>
-  >(new Map());
   const [uploadingEntry, setUploadingEntry] = useState<UploadJob | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [submitError, setSubmitError] = useState<string | null>(null);
   const uploadHandleRef = useRef<UploadHandle | null>(null);
+
+  // Group the injected detections by the upload job they came from.
+  // Recomputed on every snapshot update — cheap.
+  const detectionsBySyncId = useMemo(() => {
+    const grouped = new Map<string, any[]>();
+    for (const det of batDetections) {
+      const sid = (det as any).syncId as string | undefined;
+      if (!sid) continue;
+      if (!grouped.has(sid)) grouped.set(sid, []);
+      grouped.get(sid)!.push(det);
+    }
+    return grouped;
+  }, [batDetections]);
 
   // ── Recent uploads subscription ─────────────────────────────────
   useEffect(() => {
@@ -135,31 +152,6 @@ export function UploadAnalysisPanel() {
       setUploadingEntry((cur) =>
         cur && jobs.some((j) => j.id === cur.id) ? null : cur,
       );
-    });
-    return unsub;
-  }, []);
-
-  // ── Upload-sourced detections subscription ──────────────────────
-  // Single query keeps the read count modest (≤ 500 docs across the
-  // last 25 uploads; typical is way less).
-  useEffect(() => {
-    const q = query(
-      collection(db, "batDetections"),
-      where("source", "==", "upload"),
-      orderBy("detectionTime", "desc"),
-      limit(DETECTIONS_LIMIT),
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const grouped = new Map<string, any[]>();
-      snap.docs.forEach((d) => {
-        const det = { id: d.id, ...d.data() } as Record<string, any>;
-        const sid = det.syncId as string | undefined;
-        if (!sid) return;
-        if (!grouped.has(sid)) grouped.set(sid, []);
-        grouped.get(sid)!.push(det);
-      });
-      // Each group stays ordered desc (Firestore returned that way)
-      setDetectionsBySyncId(grouped);
     });
     return unsub;
   }, []);
