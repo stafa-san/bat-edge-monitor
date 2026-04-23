@@ -625,8 +625,28 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
                     </div>
                   </div>
                   <span
-                    className={`text-[11px] font-medium px-2 py-1 rounded-full border shrink-0 ${badge.className}`}
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border shrink-0 ${badge.className}`}
                   >
+                    {(job.status === "pending" || job.status === "processing") && (
+                      <svg
+                        className="animate-spin h-3 w-3"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          cx="12" cy="12" r="10"
+                          stroke="currentColor" strokeWidth="3"
+                          className="opacity-25"
+                        />
+                        <path
+                          d="M22 12a10 10 0 0 1-10 10"
+                          stroke="currentColor" strokeWidth="3"
+                          strokeLinecap="round"
+                          className="opacity-90"
+                        />
+                      </svg>
+                    )}
                     {badge.label}
                   </span>
                 </button>
@@ -860,9 +880,9 @@ function SpectrogramView({ job }: { job: UploadJob }) {
                     ? "bg-gray-900 text-white"
                     : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
-                title="Bat-research style — dark navy background, bright cyan call peaks, waveform strip."
+                title="Bat-research style — dark navy background, deep blue calls with a warm highlight at the FM hook."
               >
-                sonobat
+                sonobat style
               </button>
             </div>
           )}
@@ -899,8 +919,8 @@ function SpectrogramView({ job }: { job: UploadJob }) {
       <p className="text-[10px] text-gray-400 mt-1">
         {palette === "sonobat"
           ? showOverlay
-            ? "SonoBat-style palette — bright cyan call peaks against dark navy, red boxes + species labels on detected calls."
-            : "SonoBat-style palette — bright cyan call peaks against dark navy. Waveform envelope below. Click \"show detections\" to overlay boxes."
+            ? "SonoBat-style palette — deep blue call bodies with a warm highlight at the FM hook, red boxes + species labels on detected calls."
+            : "SonoBat-style palette — deep blue call bodies with a warm highlight at the FM hook. Click \"show detections\" to overlay boxes."
           : showOverlay
           ? "Viridis palette, red boxes mark detected calls. Detection list below is sorted in the same left-to-right order."
           : hasOverlayToggle
