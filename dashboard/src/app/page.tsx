@@ -282,10 +282,12 @@ export default function Dashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Stats Cards */}
+        {/* Stats Cards — live captures only; uploads are counted
+            separately inside the Offline WAV Analysis panel. Mixing
+            them in the header would overstate field activity. */}
         <StatsCards
           classifications={classifications}
-          batDetections={batDetections}
+          batDetections={batDetections.filter((d) => d.source !== "upload")}
           batDetectionsTotal={deviceStatus?.batDetectionsTotal}
         />
 
