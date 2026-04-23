@@ -330,6 +330,16 @@ async def main():
             "tier assignment reads the classifier's confidence per detection."
         )
 
+    # Diagnostic save — write a WAV for any segment where BatDetect2
+    # passed its threshold but a downstream gate (classifier / validator /
+    # FM-sweep) rejected it. Forensic data so we can inspect "near miss"
+    # rejections manually and tell whether filter thresholds are right.
+    diagnostic_save = os.getenv("DIAGNOSTIC_SAVE_REJECTIONS", "false").lower() == "true"
+    diagnostic_dir = os.path.join(BAT_AUDIO_DIR, "_diagnostic")
+    if diagnostic_save:
+        os.makedirs(diagnostic_dir, exist_ok=True)
+        print(f"[BAT] Diagnostic save enabled — near-miss rejections written to {diagnostic_dir}")
+
     print(f"[BAT] Initializing audio capture: {device_name} @ {sample_rate} Hz")
     capture = BatAudioCapture(device_name=device_name, sampling_rate=sample_rate)
 
@@ -540,6 +550,41 @@ async def main():
                         f"{_health_consecutive_bad} bad segments"
                     )
                 _health_consecutive_bad = 0
+
+            # Diagnostic save — when BatDetect2 passed its threshold
+            # but a downstream gate rejected the segment, copy the raw
+            # WAV aside for forensic review. This is how we tell
+            # whether the shape/validator filters are over-rejecting
+            # real bat calls vs correctly catching noise.
+            if (
+                diagnostic_save
+                and rejection_reason is not None
+                and bd_stats
+                and (bd_stats.get("count_above_user") or 0) > 0
+            ):
+                try:
+                    os.makedirs(diagnostic_dir, exist_ok=True)
+                    from datetime import datetime as _dt
+                    ts = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                    # Encode the rejection reason in the filename so we
+                    # can triage a folder full of these without opening
+                    # each one.
+                    safe_reason = (
+                        rejection_reason
+                        .replace("(", "_").replace(")", "").replace("=", "")
+                        .replace(".", "p").replace("+", "").replace("/", "-")
+                        .replace(":", "-").replace(",", "_")
+                    )[:80]
+                    diag_name = f"{site_id}_{ts}__BDpass_{safe_reason}.wav"
+                    diag_dest = os.path.join(diagnostic_dir, diag_name)
+                    shutil.copy2(audio_path, diag_dest)
+                    print(
+                        f"[BAT] DIAG saved: {diag_name} "
+                        f"(bd_max={bd_stats.get('max_det_prob'):.3f}, "
+                        f"user_pass={bd_stats.get('count_above_user')})"
+                    )
+                except Exception as e:
+                    print(f"[BAT] diagnostic save failed: {e}")
 
             # Audio-level + BD-stats + rejection sample for dashboard
             # troubleshooting. One row per captured segment — auto-
