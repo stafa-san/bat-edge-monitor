@@ -2,14 +2,19 @@
 
 Fires on Firestore ``uploadJobs/{jobId}`` document creation. Downloads
 the corresponding ``uploads/{jobId}.wav`` from Firebase Storage, runs
-the shared 4-gate bat-analysis pipeline
-(:mod:`src.bat_pipeline.run_full_pipeline`), and writes detections
-back to Firestore so the dashboard's Offline WAV Analysis panel shows
-them in place.
+the shared 4-gate bat-analysis pipeline (``src.bat_pipeline.run_full_pipeline``),
+and writes detections back to Firestore so the dashboard's Offline
+WAV Analysis panel shows them in place.
 
 Runs the exact same pipeline as the Pi's live capture path — the
 ``src/`` modules are synced from ``edge/batdetect-service/src/`` by
 ``build.sh`` (predeploy hook in ``firebase.json``).
+
+**Import discipline:** Firebase CLI imports this module during deploy
+to discover registered function signatures. Heavy imports (``torch``,
+``batdetect2``, ``scipy``) are deferred to inside the handler body so
+local CLI parse only needs ``firebase-functions`` + ``firebase-admin``
+in the local ``functions/venv``.
 
 Config — set per-function via the decorator defaults below, overridable
 per-deploy with env vars:
@@ -17,9 +22,8 @@ per-deploy with env vars:
 * ``MODEL_PATH``               — classifier checkpoint (bundled at deploy)
 * ``MODEL_VERSION``            — recorded on every detection row
 * ``FIREBASE_STORAGE_BUCKET``  — provided automatically by Firebase at runtime
-* ``DETECTION_THRESHOLD``, ``MIN_PREDICTION_CONF`` — user/classifier gate knobs
-* ``HPF_*``, ``VALIDATOR_*``, ``FM_SWEEP_*`` — all pipeline knobs,
-  defaults mirror ``batdetect-service`` Pi config
+* ``DETECTION_THRESHOLD``, ``MIN_PREDICTION_CONF``
+* ``HPF_*``, ``VALIDATOR_*``, ``FM_SWEEP_*`` — pipeline knobs, defaults mirror Pi
 """
 
 from __future__ import annotations
@@ -31,15 +35,8 @@ from datetime import datetime
 from typing import Optional
 
 import firebase_admin
-from firebase_admin import credentials, firestore, storage as fb_storage
+from firebase_admin import firestore, storage as fb_storage
 from firebase_functions import firestore_fn, options
-
-# bat_pipeline + classifier come from src/, which is populated by
-# ./build.sh (predeploy hook) with canonical copies from
-# edge/batdetect-service/src/.
-from src import bat_pipeline
-from src.classifier import load_groups_classifier
-
 
 # ---------------------------------------------------------------------------
 #  Firebase init — runs once per cold start
@@ -49,16 +46,31 @@ firebase_admin.initialize_app()
 
 
 # ---------------------------------------------------------------------------
-#  Lazy globals — classifier is ~60 KB but torch import + model load
-#  costs ~2s, so keep them warm across invocations on the same instance.
+#  Config (read at module load, cheap)
+# ---------------------------------------------------------------------------
+
+MODEL_VERSION = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-17")
+DEVICE_LABEL = os.getenv("UPLOAD_DEVICE_LABEL", "upload")
+BAT_DETECTIONS_COLLECTION = os.getenv("BAT_DETECTIONS_COLLECTION", "batDetections")
+
+
+# ---------------------------------------------------------------------------
+#  Lazy globals — heavy imports + model load happen on first invocation.
 # ---------------------------------------------------------------------------
 
 _classifier_cache: Optional[tuple] = None
 
 
 def _get_classifier():
+    """Lazy-load ``torch`` + ``batdetect2`` + the classifier checkpoint.
+
+    Kept out of module scope so the Firebase CLI can parse this file
+    locally without the heavy ML deps installed.
+    """
     global _classifier_cache
     if _classifier_cache is None:
+        from src.classifier import load_groups_classifier  # noqa: E402
+
         model_path = os.getenv(
             "MODEL_PATH",
             os.path.join(os.path.dirname(__file__), "models", "groups_model.pt"),
@@ -87,11 +99,6 @@ def _load_pipeline_cfg() -> dict:
         "fm_sweep_max_low_band_ratio": float(os.getenv("FM_SWEEP_MAX_LOW_BAND_RATIO", "0.5")),
         "fm_sweep_min_r2": float(os.getenv("FM_SWEEP_MIN_R2", "0.2")),
     }
-
-
-MODEL_VERSION = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-17")
-DEVICE_LABEL = os.getenv("UPLOAD_DEVICE_LABEL", "upload")
-BAT_DETECTIONS_COLLECTION = os.getenv("BAT_DETECTIONS_COLLECTION", "batDetections")
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +171,11 @@ def _mark_done(
     job_ref,
     pairs,
     duration_seconds: float,
+    pipeline_version: str,
     *,
     rejection_reason: Optional[str] = None,
     rejection_message: Optional[str] = None,
     stats: Optional[dict] = None,
-    pipeline_version: str = bat_pipeline.PIPELINE_VERSION,
 ):
     species_found = sorted({
         (pred.get("predicted_class") or det.get("class") or "Unknown")
@@ -212,6 +219,11 @@ def _mark_error(job_ref, message: str):
 )
 def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> None:
     """Runs on every new upload job. One job per cold start typically."""
+    # Heavy imports deferred here so Firebase CLI parse (which runs this
+    # file's top-level code) doesn't need torch / batdetect2 installed
+    # in the local venv.
+    from src import bat_pipeline  # noqa: E402
+
     job_id = event.params["jobId"]
     snap = event.data
     if snap is None:
@@ -225,8 +237,8 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
     db = firestore.client()
     job_ref = db.collection("uploadJobs").document(job_id)
 
-    # Transition to processing. Doing this eagerly so the dashboard
-    # updates its spinner even if we crash partway through.
+    # Transition to processing so the dashboard spinner updates even if
+    # we later crash.
     try:
         job_ref.update({
             "status": "processing",
@@ -261,8 +273,8 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
             )
             _mark_done(
                 job_ref, result.detections, result.duration_seconds,
+                result.pipeline_version,
                 stats=result.stats,
-                pipeline_version=result.pipeline_version,
             )
             print(
                 f"[CF] {job_id}: {len(result.detections)} detections "
@@ -272,10 +284,10 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
             human = bat_pipeline.humanize_rejection(result.rejection_reason)
             _mark_done(
                 job_ref, [], result.duration_seconds,
+                result.pipeline_version,
                 rejection_reason=result.rejection_reason,
                 rejection_message=human,
                 stats=result.stats,
-                pipeline_version=result.pipeline_version,
             )
             print(
                 f"[CF] {job_id}: 0 detections "
