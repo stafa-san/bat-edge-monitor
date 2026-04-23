@@ -145,6 +145,21 @@ def collect_summary(conn, site_id: str, window_hours: int = 24) -> dict:
     )
     out["capture_errors"] = int(err[0]) if err else 0
 
+    # Model-health flag — derived. If BatDetect2 saw literally zero
+    # raw detections across a full window of audio that wasn't silent,
+    # the model is almost certainly in the degenerate state that
+    # BATDETECT2_STABILITY_FIX.md describes. Conservative thresholds
+    # so genuine quiet nights don't trigger:
+    #   - need ≥100 segments in the window (enough data)
+    #   - avg raw_count must be 0 (not just low — zero)
+    #   - p50 audio RMS above the validator's noise floor (mic was
+    #     picking up something louder than ambient)
+    out["model_health_alert"] = (
+        out.get("audio_segments", 0) >= 100
+        and (out.get("bd_raw_avg") or 0) == 0
+        and (out.get("audio_rms_p50") or 0) >= 0.005
+    )
+
     return out
 
 
@@ -196,6 +211,17 @@ def _format_text(s: dict) -> str:
         lines.append(f"⚠ Capture errors in window: {s['capture_errors']}")
         lines.append("")
 
+    if s.get("model_health_alert"):
+        lines.append(
+            "⚠ MODEL HEALTH ALERT: BatDetect2 returned 0 raw detections on "
+            f"{s.get('audio_segments', 0)} segments despite audio RMS above "
+            "the noise floor. Detector is likely in the degenerate state "
+            "from BATDETECT2_STABILITY_FIX.md. Recommended: "
+            "`docker compose restart batdetect-service` to force a warm-up "
+            "reload and check the next morning's summary."
+        )
+        lines.append("")
+
     lines.append("—")
     lines.append("See dashboard and HARDWARE_TROUBLESHOOTING.md for context.")
     return "\n".join(lines)
@@ -229,6 +255,13 @@ def _format_html(s: dict) -> str:
     if s.get("capture_errors"):
         rows.append(_row("Capture errors",
                          f'<span style="color:#dc2626;">{s["capture_errors"]}</span>'))
+    if s.get("model_health_alert"):
+        rows.append(_row(
+            "Model health",
+            '<span style="color:#dc2626;font-weight:700;">'
+            "⚠ ALERT — 0 raw detections, non-silent audio. "
+            "See BATDETECT2_STABILITY_FIX.md</span>",
+        ))
 
     return (
         '<html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#111;">'
