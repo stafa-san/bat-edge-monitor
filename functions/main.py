@@ -59,6 +59,7 @@ BAT_DETECTIONS_COLLECTION = os.getenv("BAT_DETECTIONS_COLLECTION", "batDetection
 # ---------------------------------------------------------------------------
 
 _classifier_cache: Optional[tuple] = None
+_bd_warmed_up = False
 
 
 def _get_classifier():
@@ -66,10 +67,31 @@ def _get_classifier():
 
     Kept out of module scope so the Firebase CLI can parse this file
     locally without the heavy ML deps installed.
+
+    Also pins ``torch`` to a single inference thread and runs a BatDetect2
+    warm-up forward pass on synthetic audio. Background: in the CF
+    environment we observed BatDetect2 silently returning 0 raw
+    detections on the SAME audio file that had just returned 26 — the
+    same worker, the same HPF cache, the same classifier cache. The
+    only plausible source of drift is torch-internal state (thread
+    contention, JIT-compile state, lazy weight init). Pinning threads
+    + forcing a full forward pass before accepting real traffic makes
+    cold-starts deterministic; if the warm-up itself fails the worker
+    crashes and CF restarts it, which is the outcome we want over the
+    current "silently returns garbage" behaviour.
     """
-    global _classifier_cache
+    global _classifier_cache, _bd_warmed_up
     if _classifier_cache is None:
+        import numpy as np
+        import torch
+        from batdetect2 import api as bat_api
         from src.classifier import load_groups_classifier  # noqa: E402
+
+        # Pin single-threaded inference — CF workers share CPU with
+        # other tenants and torch's intra-op threadpool is a well-known
+        # source of nondeterminism on shared hosts.
+        torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
 
         model_path = os.getenv(
             "MODEL_PATH",
@@ -79,6 +101,29 @@ def _get_classifier():
         _classifier_cache = load_groups_classifier(model_path)
         ckpt = _classifier_cache[1]
         print(f"[CF] Classifier ready: {ckpt['class_names']}")
+
+        # Warm-up pass through BatDetect2 on 1 s of synthetic chirp-ish
+        # noise. We don't care about the output — we only need torch
+        # to do a real forward pass so the lazy weight init + any JIT
+        # tracing happens while the worker is guaranteed idle.
+        if not _bd_warmed_up:
+            cfg = bat_api.get_config()
+            sr = int(cfg.get("target_samp_rate", 256000))
+            t = np.linspace(0.0, 1.0, sr, endpoint=False, dtype=np.float32)
+            # 30 kHz chirp with noise — in the bat band so the model
+            # actually exercises its detection head, not just passes
+            # silence through.
+            audio = (
+                0.1 * np.sin(2 * np.pi * 30_000 * t)
+                + 0.01 * np.random.randn(sr).astype(np.float32)
+            ).astype(np.float32)
+            try:
+                bat_api.process_audio(audio, config=cfg)
+                print("[CF] BatDetect2 warm-up complete")
+            except Exception as e:  # noqa: BLE001 — want CF to restart
+                print(f"[CF] BatDetect2 warm-up FAILED: {e}")
+                raise
+            _bd_warmed_up = True
     return _classifier_cache
 
 
