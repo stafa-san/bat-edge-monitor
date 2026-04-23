@@ -51,19 +51,20 @@ from scipy.signal import spectrogram as _spectrogram
 # the hottest few percent of pixels light up as cyan+cream-yellow
 # (matching the warm highlight SonoBat puts on call tips).
 _SONOBAT_STOPS = [
-    # Iteration 5 (2026-04-23): the bright band was still spreading
-    # beyond the call tips. Pushed the cyan + cream highlights from
-    # 0.95–1.00 down to 0.985–1.00 so only the top ~1.5% of pixels
-    # brighten. Result: calls stay blue with just a pinprick warm tip
-    # at the FM hook, matching the reference.
-    (0.00, "#000206"),  # near-black
-    (0.15, "#020616"),  # very dark blue-black (quiet)
-    (0.35, "#06114a"),  # dark navy (noise speckle floor)
-    (0.58, "#0d2090"),  # deep royal blue (noise + faint calls)
-    (0.80, "#1c3fd8"),  # saturated blue (typical call body)
-    (0.94, "#3870ff"),  # bright pure blue (call peak mid — most of tip)
-    (0.985, "#a8c8ff"), # soft cyan — only the very top 1.5%
-    (1.00, "#fff4c8"),  # pale cream (hottest pixel only — pinprick at FM hook)
+    # Iteration 6 (2026-04-23): previous palette had black at the
+    # bottom, so quiet bands (0–20 kHz, 80–140 kHz) clamped to vmin
+    # rendered solid black. The real SonoBat reference keeps all
+    # ambient noise in visible navy-blue speckle — there is no pure
+    # black anywhere. Lifted the entire bottom half of the palette
+    # into the navy/royal-blue range so even silence reads as blue.
+    (0.00, "#040a26"),  # dark navy (NOT black — silence still reads blue)
+    (0.12, "#08133a"),  # slightly brighter navy
+    (0.30, "#0e2080"),  # royal blue (noise speckle — visible)
+    (0.55, "#1a3fc8"),  # saturated blue (loud noise + call base)
+    (0.80, "#3366ff"),  # bright blue (call body)
+    (0.94, "#7ba8ff"),  # lighter blue (call peak)
+    (0.985, "#d0e0ff"), # soft cyan — pinprick at FM hook
+    (1.00, "#fff4c8"),  # pale cream (hottest pixel only)
 ]
 
 
@@ -79,12 +80,14 @@ def _palette_settings(palette: str) -> dict:
                                      # 15s clip and timing out the CF at
                                      # render time. 0.80 halves the frame
                                      # count while keeping sweeps smooth.
-            "dynamic_range_db": 36,  # iteration 3 (2026-04-23): widened
-                                     # from 30 so ambient noise floor has
-                                     # visible texture instead of clipping
-                                     # to the bottom palette stop. Pairs
-                                     # with the softer top stop to stop
-                                     # call peaks glowing as neon.
+            "dynamic_range_db": 30,  # iteration 6 (2026-04-23): narrowed
+                                     # back from 36. The wider 36 dB range
+                                     # was mapping too much of the ambient
+                                     # noise floor below vmin (where it
+                                     # clamped to palette[0]). At 30 dB
+                                     # only the very quietest bins clamp
+                                     # out, and the navy palette[0] means
+                                     # even those stay visibly blue.
             "cmap_name": "sonobat",
             "grid": False,         # iteration 4 (2026-04-23): the real
                                    # SonoBat reference has no horizontal
