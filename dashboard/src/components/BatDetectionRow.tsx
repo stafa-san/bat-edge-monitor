@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
+
 /**
  * Single detection row shared between:
  *   - The live BatDetectionFeed
  *   - The Offline WAV Analysis panel's per-upload result list
  *
- * Kept as a dedicated component so both surfaces stay visually
- * identical without copy-paste drift.
+ * Review actions (verify / reject / notes) are optional — pass the
+ * ``onReview`` callback only where review makes sense (upload panel).
+ * The live feed stays unchanged.
  */
 
 export const GROUP_LABELS: Record<string, { common: string; desc: string }> = {
@@ -23,20 +26,31 @@ export const GROUP_LABELS: Record<string, { common: string; desc: string }> = {
   PESU: { common: "Tri-colored Bat", desc: "Perimyotis subflavus" },
 };
 
+export const REVIEWABLE_CLASSES = Object.keys(GROUP_LABELS);
+
+export type ReviewAction =
+  | { kind: "verify" }
+  | { kind: "correct"; correctedClass: string }
+  | { kind: "notes"; notes: string };
+
 interface BatDetectionRowProps {
-  // Loose-typed for now — matches what onSnapshot hands back and the
-  // shape writers in sync-service / worker produce.
   det: any;
-  // The Offline WAV panel groups rows under an upload card, so the
-  // UPLOAD source badge on every row would be noise. Passing true
-  // suppresses it.
   hideSourceBadge?: boolean;
+  // When set, the row renders review controls (✓ / ✗ / 📝). Called
+  // with a ReviewAction describing what the user clicked.
+  onReview?: (action: ReviewAction) => void | Promise<void>;
 }
 
-export function BatDetectionRow({ det, hideSourceBadge = false }: BatDetectionRowProps) {
+export function BatDetectionRow({
+  det,
+  hideSourceBadge = false,
+  onReview,
+}: BatDetectionRowProps) {
   const group = det.predictedClass || det.species;
   const info = GROUP_LABELS[group];
   const confidence = det.predictionConfidence || det.detectionProb || 0;
+  const verifiedClass: string | null = det.verifiedClass ?? null;
+  const reviewedBy: string | null = det.reviewedBy ?? null;
 
   return (
     <div className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg border border-purple-100">
@@ -59,6 +73,17 @@ export function BatDetectionRow({ det, hideSourceBadge = false }: BatDetectionRo
                 UPLOAD
               </span>
             )}
+            {verifiedClass === det.predictedClass && (
+              <span className="text-[10px] font-medium bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded shrink-0">
+                ✓ verified
+              </span>
+            )}
+            {verifiedClass &&
+              verifiedClass !== det.predictedClass && (
+                <span className="text-[10px] font-medium bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded shrink-0">
+                  corrected → {verifiedClass}
+                </span>
+              )}
           </div>
           <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full shrink-0">
             {(confidence * 100).toFixed(0)}%
@@ -89,12 +114,128 @@ export function BatDetectionRow({ det, hideSourceBadge = false }: BatDetectionRo
             Your browser does not support audio playback.
           </audio>
         )}
-        <p className="text-xs text-gray-400 mt-1">
-          {det.detectionTime?.toDate
-            ? det.detectionTime.toDate().toLocaleString()
-            : "—"}
-        </p>
+        <div className="flex items-center justify-between mt-1 gap-2">
+          <p className="text-xs text-gray-400">
+            {det.detectionTime?.toDate
+              ? det.detectionTime.toDate().toLocaleString()
+              : "—"}
+            {reviewedBy && (
+              <span className="ml-2 text-emerald-600">
+                • reviewed by {reviewedBy}
+              </span>
+            )}
+          </p>
+          {onReview && (
+            <ReviewControls det={det} onReview={onReview} />
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function ReviewControls({
+  det,
+  onReview,
+}: {
+  det: any;
+  onReview: (action: ReviewAction) => void | Promise<void>;
+}) {
+  // Lightweight local UI state. Dropdown / notes input inline rather
+  // than modal to match the compact row style.
+  const [mode, setMode] = useState<"idle" | "correct" | "notes">("idle");
+
+  async function run(action: ReviewAction) {
+    await onReview(action);
+    setMode("idle");
+  }
+
+  if (mode === "correct") {
+    return (
+      <div className="flex items-center gap-1">
+        <select
+          className="text-xs rounded border border-gray-300 px-1 py-0.5"
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) {
+              void run({ kind: "correct", correctedClass: e.target.value });
+            }
+          }}
+        >
+          <option value="" disabled>
+            correct to…
+          </option>
+          {REVIEWABLE_CLASSES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setMode("idle")}
+          className="text-[11px] text-gray-500 hover:text-gray-700"
+        >
+          cancel
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "notes") {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          autoFocus
+          defaultValue={det.reviewerNotes ?? ""}
+          placeholder="note…"
+          onBlur={(e) => {
+            if (e.target.value !== (det.reviewerNotes ?? "")) {
+              void run({ kind: "notes", notes: e.target.value });
+            } else {
+              setMode("idle");
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === "Escape") {
+              setMode("idle");
+            }
+          }}
+          className="text-xs rounded border border-gray-300 px-1.5 py-0.5 w-48"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-xs">
+      <button
+        type="button"
+        title="verify — this prediction is correct"
+        onClick={() => void run({ kind: "verify" })}
+        className="rounded px-1.5 py-0.5 text-emerald-700 hover:bg-emerald-100"
+      >
+        ✓
+      </button>
+      <button
+        type="button"
+        title="correct — pick the right species"
+        onClick={() => setMode("correct")}
+        className="rounded px-1.5 py-0.5 text-rose-700 hover:bg-rose-100"
+      >
+        ✗
+      </button>
+      <button
+        type="button"
+        title="add a note"
+        onClick={() => setMode("notes")}
+        className="rounded px-1.5 py-0.5 text-gray-600 hover:bg-gray-100"
+      >
+        📝
+      </button>
     </div>
   );
 }

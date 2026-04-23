@@ -20,11 +20,18 @@ service cloud.firestore {
 
     match /batDetections/{doc} {
       allow read: if true;
-      // Writes: only Admin SDK (Cloud Function + sync-service) can
-      // create/update. Upload-sourced rows can be deleted by any client
-      // so the dashboard's "Clear all" button works; live rows stay
-      // immutable from clients (only Admin SDK can delete them).
-      allow create, update: if false;
+      allow create: if false;
+      // Updates: only on upload-sourced rows, and only to the four
+      // review fields. Prevents a hostile client from rewriting species
+      // labels, confidences, etc. on upload rows (and leaves live rows
+      // completely immutable from clients).
+      allow update: if resource.data.source == 'upload'
+                    && request.resource.data.diff(resource.data)
+                       .affectedKeys()
+                       .hasOnly(['reviewedBy', 'reviewedAt',
+                                 'verifiedClass', 'reviewerNotes']);
+      // Upload-sourced rows can be deleted by any client so the
+      // dashboard's "Clear all" button works; live rows stay safe.
       allow delete: if resource.data.source == 'upload';
     }
 
