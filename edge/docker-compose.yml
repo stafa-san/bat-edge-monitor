@@ -179,11 +179,14 @@ services:
     restart: unless-stopped
 
   analysis-api:
-    # Firebase-driven upload worker. Polls Firestore ``uploadJobs`` for
-    # pending .wav uploads posted by the dashboard, downloads them from
-    # Firebase Storage, runs BatDetect2 + groups classifier, writes
-    # detections to Postgres AND Firestore. No exposed HTTP port —
-    # uploads flow through Firebase so they work from any network.
+    # RETIRED — offline WAV analysis now runs in a Firebase Cloud
+    # Function (functions/main.py, triggered on uploadJobs doc create).
+    # See OFFLINE_WAV_ANALYSIS.md. The code here still works as a
+    # fallback polling worker; re-enable by running:
+    #   docker compose --profile legacy-upload-worker up -d analysis-api
+    # Useful if you want to run the worker on the Pi while the cloud
+    # function is being debugged.
+    profiles: ["legacy-upload-worker"]
     build:
       context: ..
       dockerfile: edge/analysis-api/Dockerfile

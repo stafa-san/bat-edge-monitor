@@ -152,14 +152,76 @@ gsutil lifecycle set firebase/storage-lifecycle.json gs://<bucket-name>
 
 Verify with `gsutil lifecycle get gs://<bucket-name>`. Re-run whenever the JSON changes.
 
-## Running on the Pi
+## Deploy — Firebase Cloud Function (primary)
 
-The worker lives in the existing `analysis-api` container. To deploy the new version:
+The offline analysis worker runs as a Firebase Cloud Function (2nd gen, Python 3.12) triggered by Firestore `uploadJobs/{jobId}` doc creation. Event-driven, scales to zero between requests, no Pi dependency.
+
+### One-time: make sure billing is enabled
+
+Cloud Functions 2nd gen requires the Blaze plan. You likely already have it enabled — confirm at https://console.firebase.google.com/project/bat-edge-monitor/usage.
+
+### Deploy from your Mac
+
+```bash
+cd ~/source/bat-edge-monitor
+firebase deploy --only functions
+```
+
+What happens under the hood:
+
+1. `firebase.json`'s `predeploy` hook runs `./functions/build.sh`, syncing `bat_pipeline.py`, `audio_validator.py`, `classifier.py`, and `groups_model.pt` from `edge/batdetect-service/src/` and `docker/models/` into `functions/`.
+2. The `functions/` directory is packaged and uploaded to Google Cloud Build.
+3. Cloud Build runs the Python buildpack: `pip install -r requirements.txt` pulls torch, batdetect2, firebase-admin, scipy, etc.
+4. The resulting container image is deployed to Cloud Run (Cloud Functions 2nd gen is Cloud Run underneath).
+5. Eventarc registers the Firestore trigger on `uploadJobs/{jobId}`.
+
+**First deploy takes ~10 min** (Cloud Build compiles a ~1 GB container image with torch). Subsequent deploys are ~2-3 min when only source files changed.
+
+### Verify after deploy
+
+```bash
+# List the deployed function
+firebase functions:list
+
+# Expected:
+#   process_upload (python312, us-central1, firestore trigger: uploadJobs/{jobId})
+```
+
+To watch function logs live during testing:
+
+```bash
+firebase functions:log --only process_upload
+```
+
+### Cold start / warm request latency
+
+- **Cold start** (first request after ~15 min idle): 20-30 s (torch import + model load dominate)
+- **Warm request**: 3-5 s for a typical 15 s WAV
+- **Timeout**: 540 s (9 min)
+- **Memory**: 4 GB, **CPU**: 2 vCPU, **concurrency**: 1 (one WAV per instance at a time)
+
+### Cost at grad-project scale
+
+Function invocation (~50 uploads/month expected): well within Cloud Functions 2nd gen free tier (2M invocations/month, 360k GB-seconds/month). Negligible Storage + Firestore R/W. Expected monthly cost: **$0**.
+
+## Retired: Pi-side polling worker
+
+The Pi previously ran `analysis-api` as a polling worker. That container is now behind the `legacy-upload-worker` Docker Compose profile — **not started by default**. If you ever want to run it alongside the cloud function (for debugging, or as a fallback if the cloud function is down), bring it up with:
+
+```bash
+docker compose --profile legacy-upload-worker up -d analysis-api
+```
+
+The polling worker and the cloud function race to claim pending jobs. Cloud function is event-triggered, so it usually wins. Both writing to the same `uploadJobs` doc is idempotent in the happy path but not recommended long-term — pick one.
+
+## Running on the Pi (legacy polling path)
+
+If you do re-enable the legacy worker:
 
 ```bash
 cd ~/bat-edge-monitor/edge
-docker compose build analysis-api
-docker compose up -d analysis-api
+docker compose --profile legacy-upload-worker build analysis-api
+docker compose --profile legacy-upload-worker up -d analysis-api
 docker compose logs -f analysis-api | head -20
 ```
 
@@ -168,7 +230,8 @@ Expected startup log:
 ```
 [WORKER] Initializing Firebase...
 [WORKER] Firebase connected — bucket=bat-edge-monitor.firebasestorage.app
-[WORKER] Postgres connected. Polling every 5s...
+[WORKER] Pipeline version: v1-2026-04-22
+[WORKER] Ready (Firestore + Postgres). Polling every 5s...
 ```
 
 To sanity-check with a CLI upload (no dashboard required):

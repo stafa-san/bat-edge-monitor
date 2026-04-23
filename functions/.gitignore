@@ -1,0 +1,12 @@
+# Synced at deploy time by ./build.sh from edge/batdetect-service/src/
+# and docker/models/. Canonical copies live there; these are build artifacts.
+src/bat_pipeline.py
+src/audio_validator.py
+src/classifier.py
+models/*.pt
+
+# Python runtime
+__pycache__/
+*.pyc
+.venv/
+venv/
