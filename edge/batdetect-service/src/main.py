@@ -137,23 +137,44 @@ class BatAudioCapture:
             raise ValueError(f'No devices found matching `{name}`')
         return devices[0]
 
-    async def capture_segment(self, duration: int = 5) -> str:
-        """Capture audio and return path to wav file."""
-        self._temp_dir = TemporaryDirectory()
-        temp_file = f'{self._temp_dir.name}/bat_audio.wav'
-        command = (
-            f'arecord -d {duration} -D {self.device} '
-            f'-f S16_LE -r {self.sampling_rate} '
-            f'-c 1 -q {temp_file}'
-        )
+    async def capture_segment(self, duration: int = 5):
+        """Capture audio. Returns ``(wav_path, tempdir_handle)``.
+
+        The caller **must** call ``tempdir_handle.cleanup()`` when it's
+        done with the WAV, otherwise the file lingers in /tmp. Each call
+        returns an independent TemporaryDirectory so segments don't stomp
+        on each other — important now that capture runs concurrently
+        with detection (producer/consumer pattern).
+
+        Uses ``asyncio.create_subprocess_exec`` instead of the previous
+        blocking ``subprocess.check_call`` so that during the 15-second
+        arecord call the asyncio event loop is free to run the detection
+        consumer on the previous segment. That's what recovers the
+        ~45 % capture dead time noted in PIPELINE_AUDIT_AND_FIXES.md.
+        """
+        tmp = TemporaryDirectory()
+        temp_file = f'{tmp.name}/bat_audio.wav'
         lock_fd = open(LOCK_PATH, 'w')
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
-            subprocess.check_call(command, shell=True)
+            proc = await asyncio.create_subprocess_exec(
+                'arecord', '-d', str(duration), '-D', self.device,
+                '-f', 'S16_LE', '-r', str(self.sampling_rate),
+                '-c', '1', '-q', temp_file,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                tmp.cleanup()
+                raise subprocess.CalledProcessError(
+                    proc.returncode, 'arecord',
+                    stderr=(stderr or b'').decode('utf-8', 'replace'),
+                )
         finally:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
-        return temp_file
+        return temp_file, tmp
 
 
 def _run_batdetect_legacy(audio_path, config, hpf_sos=None):
@@ -461,278 +482,306 @@ async def main():
         f"min_pred_conf={min_pred_conf}, segment={segment_duration}s"
     )
 
-    segment_count = 0
     # Model-health watchdog — tracks consecutive segments where the
     # detector returned raw_count=0 AND the audio clearly wasn't
-    # silent. Lots of "no bats" segments during a quiet afternoon is
-    # fine; lots of "no bats" segments with audio_rms above the
-    # validator floor is the CF-nondeterminism signature from
-    # BATDETECT2_STABILITY_FIX.md applied to the Pi. Log-only for
-    # now — no auto-restart until we've seen this trigger under real
-    # field conditions and know the tuning is right. The daily-summary
-    # email already surfaces bd_raw_avg so sustained health issues are
-    # visible next morning even without this per-loop check.
-    _health_consecutive_bad = 0
-    # Threshold: once we've seen N bad segments in a row, log a loud
-    # warning. At segment_duration=15s, N=20 ≈ 5 minutes of "loud
-    # audio + no detections" — well beyond normal bat-absent silence.
+    # silent. See BATDETECT2_STABILITY_FIX.md for the CF-nondeterminism
+    # backstory. Log-only for now (no auto-restart until we've seen
+    # this trigger under real field conditions).
     _HEALTH_BAD_THRESHOLD = 20
-    # What counts as "audio is real, not ambient silence." 2× the
-    # validator's min_rms is a conservative floor — if the mic is
-    # picking up anything above this, something is making sound.
-    _HEALTH_MIN_RMS = 2.0 * validator_cfg.get("min_rms", 0.005)
+    _HEALTH_MIN_RMS = 2.0 * validator_cfg.get("min_rms", 0.002)
 
-    while True:
-        try:
-            # Disk-watchdog kill switch. Wait (don't capture) until sync-service
-            # removes the flag.
-            if HALT_FLAG.exists():
-                if segment_count % 10 == 0:
+    # Capture queue: producer feeds, consumer drains. maxsize=3 means
+    # if detection temporarily runs slower than capture (~12 s vs 15 s
+    # in normal state), we buffer up to 45 s of audio before the
+    # producer blocks. If the producer does block, we lose capture
+    # duty-cycle but only during that backlog — much better than the
+    # old serial loop which had ~45 % permanent dead time because
+    # arecord only ran between processing passes (see
+    # PIPELINE_AUDIT_AND_FIXES.md).
+    segment_queue: asyncio.Queue = asyncio.Queue(maxsize=3)
+    # Shared counters across producer/consumer — mutable holders so
+    # the closures can modify without ``nonlocal`` gymnastics.
+    segment_counter = {"n": 0}
+    health_state = {"consecutive_bad": 0}
+
+    async def capture_producer():
+        """Continuously record 15 s WAV segments and queue them for analysis.
+
+        Runs as its own asyncio task so arecord's 15-second wall-clock
+        doesn't stall the detection consumer. Each queued item carries
+        its own TemporaryDirectory handle — the consumer is responsible
+        for ``cleanup()`` after processing.
+        """
+        while True:
+            try:
+                # Disk-watchdog kill switch — sync-service touches the
+                # flag when the SD card is full; we wait (no capture).
+                if HALT_FLAG.exists():
                     print("[BAT] Recordings halted by disk watchdog; waiting...")
-                await asyncio.sleep(60)
-                continue
-
-            segment_count += 1
-
-            # Capture audio segment
-            audio_path = await capture.capture_segment(duration=segment_duration)
-
-            # Compute audio stats first; we'll insert the audio_levels
-            # row below after detection runs so we can include BD stats
-            # and the rejection reason on the same row.
-            rms, peak = _compute_audio_stats(audio_path)
-
-            # Run detection (+ optionally classification)
-            rejection_reason = None
-            bd_stats = None
-            if enable_classifier:
-                rows_data, rejection_reason, bd_stats = _run_batdetect_with_classifier(
-                    audio_path, classifier_model, classifier_ckpt, config,
-                    hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
-                    validator_cfg=validator_cfg,
-                    fm_sweep_cfg=fm_sweep_cfg,
-                    user_threshold=threshold,
+                    await asyncio.sleep(60)
+                    continue
+                wav_path, tmp_dir = await capture.capture_segment(
+                    duration=segment_duration
                 )
-            else:
-                rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
+                await segment_queue.put((wav_path, tmp_dir))
+            except Exception as exc:  # noqa: BLE001 — keep producer alive
+                print(f"[BAT] capture_producer error: {exc}")
+                await asyncio.sleep(2)
 
-            # Model-health watchdog. "Real audio but detector saw
-            # literally nothing" is the silent-failure signature from
-            # the CF incident; if it starts happening on the Pi we
-            # want to know in the container logs within minutes, not
-            # in tomorrow's summary email.
-            _raw_count = (bd_stats or {}).get("raw_count") or 0
-            if rms is not None and rms > _HEALTH_MIN_RMS and _raw_count == 0:
-                _health_consecutive_bad += 1
-                if _health_consecutive_bad == _HEALTH_BAD_THRESHOLD:
-                    print(
-                        f"[BAT] MODEL-HEALTH WARNING: {_HEALTH_BAD_THRESHOLD} "
-                        f"consecutive segments with rms>{_HEALTH_MIN_RMS:.4f} "
-                        f"and raw_count=0 — detector may be in a degenerate "
-                        f"state. See BATDETECT2_STABILITY_FIX.md. Consider "
-                        f"`docker compose restart batdetect-service` to force "
-                        f"a warm-up reload."
-                    )
-                elif _health_consecutive_bad > _HEALTH_BAD_THRESHOLD and \
-                     _health_consecutive_bad % _HEALTH_BAD_THRESHOLD == 0:
-                    # Keep logging every N more segments so ops know
-                    # the issue is persistent, not just a spike.
-                    print(
-                        f"[BAT] MODEL-HEALTH WARNING: still bad "
-                        f"({_health_consecutive_bad} consecutive segments)"
-                    )
-            else:
-                if _health_consecutive_bad >= _HEALTH_BAD_THRESHOLD:
-                    # Recovered — log the recovery so the log narrative
-                    # shows both directions of the transition.
-                    print(
-                        f"[BAT] MODEL-HEALTH RECOVERED after "
-                        f"{_health_consecutive_bad} bad segments"
-                    )
-                _health_consecutive_bad = 0
+    async def detect_consumer():
+        """Drain captured segments through the full detection pipeline."""
+        nonlocal conn
+        while True:
+            wav_path, tmp_dir = await segment_queue.get()
+            try:
+                segment_counter["n"] += 1
+                segment_count = segment_counter["n"]
 
-            # Diagnostic save — when BatDetect2 passed its threshold
-            # but a downstream gate rejected the segment, copy the raw
-            # WAV aside for forensic review. This is how we tell
-            # whether the shape/validator filters are over-rejecting
-            # real bat calls vs correctly catching noise.
-            if (
-                diagnostic_save
-                and rejection_reason is not None
-                and bd_stats
-                and (bd_stats.get("count_above_user") or 0) > 0
-            ):
-                try:
-                    os.makedirs(diagnostic_dir, exist_ok=True)
-                    from datetime import datetime as _dt
-                    ts = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
-                    # Encode the rejection reason in the filename so we
-                    # can triage a folder full of these without opening
-                    # each one.
-                    safe_reason = (
-                        rejection_reason
-                        .replace("(", "_").replace(")", "").replace("=", "")
-                        .replace(".", "p").replace("+", "").replace("/", "-")
-                        .replace(":", "-").replace(",", "_")
-                    )[:80]
-                    diag_name = f"{site_id}_{ts}__BDpass_{safe_reason}.wav"
-                    diag_dest = os.path.join(diagnostic_dir, diag_name)
-                    shutil.copy2(audio_path, diag_dest)
-                    print(
-                        f"[BAT] DIAG saved: {diag_name} "
-                        f"(bd_max={bd_stats.get('max_det_prob'):.3f}, "
-                        f"user_pass={bd_stats.get('count_above_user')})"
-                    )
-                except Exception as e:
-                    print(f"[BAT] diagnostic save failed: {e}")
+                rms, peak = _compute_audio_stats(wav_path)
 
-            # Audio-level + BD-stats + rejection sample for dashboard
-            # troubleshooting. One row per captured segment — auto-
-            # expired after 7 days by sync-service.
-            if rms is not None:
+                rejection_reason = None
+                bd_stats = None
+                if enable_classifier:
+                    rows_data, rejection_reason, bd_stats = _run_batdetect_with_classifier(
+                        wav_path, classifier_model, classifier_ckpt, config,
+                        hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
+                        validator_cfg=validator_cfg,
+                        fm_sweep_cfg=fm_sweep_cfg,
+                        user_threshold=threshold,
+                    )
+                else:
+                    rows_data = _run_batdetect_legacy(
+                        wav_path, config, hpf_sos=hpf_sos
+                    )
+
+                # Model-health watchdog — "real audio but detector saw
+                # literally nothing" is the silent-failure signature.
+                _raw_count = (bd_stats or {}).get("raw_count") or 0
+                if rms is not None and rms > _HEALTH_MIN_RMS and _raw_count == 0:
+                    health_state["consecutive_bad"] += 1
+                    bad_n = health_state["consecutive_bad"]
+                    if bad_n == _HEALTH_BAD_THRESHOLD:
+                        print(
+                            f"[BAT] MODEL-HEALTH WARNING: {_HEALTH_BAD_THRESHOLD} "
+                            f"consecutive segments with rms>{_HEALTH_MIN_RMS:.4f} "
+                            f"and raw_count=0 — detector may be in a degenerate "
+                            f"state. See BATDETECT2_STABILITY_FIX.md. Consider "
+                            f"`docker compose restart batdetect-service`."
+                        )
+                    elif bad_n > _HEALTH_BAD_THRESHOLD and \
+                         bad_n % _HEALTH_BAD_THRESHOLD == 0:
+                        print(
+                            f"[BAT] MODEL-HEALTH WARNING: still bad "
+                            f"({bad_n} consecutive segments)"
+                        )
+                else:
+                    if health_state["consecutive_bad"] >= _HEALTH_BAD_THRESHOLD:
+                        print(
+                            f"[BAT] MODEL-HEALTH RECOVERED after "
+                            f"{health_state['consecutive_bad']} bad segments"
+                        )
+                    health_state["consecutive_bad"] = 0
+
+                # Diagnostic save of near-miss rejections (see
+                # DIAGNOSTIC_SAVE_REJECTIONS comment in docker-compose.yml).
+                if (
+                    diagnostic_save
+                    and rejection_reason is not None
+                    and bd_stats
+                    and (bd_stats.get("count_above_user") or 0) > 0
+                ):
+                    try:
+                        os.makedirs(diagnostic_dir, exist_ok=True)
+                        from datetime import datetime as _dt
+                        ts = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                        safe_reason = (
+                            rejection_reason
+                            .replace("(", "_").replace(")", "").replace("=", "")
+                            .replace(".", "p").replace("+", "").replace("/", "-")
+                            .replace(":", "-").replace(",", "_")
+                        )[:80]
+                        diag_name = f"{site_id}_{ts}__BDpass_{safe_reason}.wav"
+                        diag_dest = os.path.join(diagnostic_dir, diag_name)
+                        shutil.copy2(wav_path, diag_dest)
+                        print(
+                            f"[BAT] DIAG saved: {diag_name} "
+                            f"(bd_max={bd_stats.get('max_det_prob'):.3f}, "
+                            f"user_pass={bd_stats.get('count_above_user')})"
+                        )
+                    except Exception as e:
+                        print(f"[BAT] diagnostic save failed: {e}")
+
+                await _handle_detection_result(
+                    segment_count=segment_count,
+                    wav_path=wav_path,
+                    rms=rms, peak=peak,
+                    rejection_reason=rejection_reason,
+                    bd_stats=bd_stats,
+                    rows_data=rows_data,
+                )
+            except Exception as exc:  # noqa: BLE001 — keep consumer alive
+                print(f"[BAT] detect_consumer error (#{segment_counter['n']}): {exc}")
                 try:
                     conn = ensure_connection(conn)
                     with conn.cursor() as cur:
                         cur.execute(
-                            "INSERT INTO audio_levels "
-                            "(rms, peak, bd_raw_count, bd_max_det_prob, "
-                            " bd_user_pass, rejection_reason) "
-                            "VALUES (%s, %s, %s, %s, %s, %s)",
-                            (
-                                rms, peak,
-                                (bd_stats or {}).get("raw_count"),
-                                (bd_stats or {}).get("max_det_prob"),
-                                (bd_stats or {}).get("count_above_user"),
-                                rejection_reason,
-                            ),
+                            "INSERT INTO capture_errors (service, error_type, message) "
+                            "VALUES (%s, %s, %s)",
+                            ("batdetect-service", type(exc).__name__, str(exc)[:500]),
                         )
                     conn.commit()
-                except Exception as e:
-                    # Non-fatal: don't let telemetry kill capture.
-                    print(f"[BAT] audio_levels write failed: {e}")
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
+            finally:
+                # Always clean up the tempdir so /tmp doesn't fill up.
+                try:
+                    tmp_dir.cleanup()
+                except Exception:
+                    pass
+                segment_queue.task_done()
 
-            sync_id = str(uuid.uuid4())
-            detection_time = datetime.utcnow()
+    async def _handle_detection_result(*, segment_count, wav_path, rms, peak,
+                                       rejection_reason, bd_stats, rows_data):
+        """Everything after detection runs: DB insert, archive, log."""
+        nonlocal conn
 
-            if rows_data:
-                print(f"[BAT] #{segment_count} | {len(rows_data)} bat call(s) detected!")
-
-                # Decide where the WAV goes. Tiering supersedes UPLOAD_BAT_AUDIO
-                # when enabled; otherwise fall back to the legacy "copy if
-                # UPLOAD_BAT_AUDIO" behavior.
-                audio_saved_path = None
-                file_storage_tier = None
-                file_expires_at = None
-
-                if enable_storage_tiering:
-                    tier = storage.determine_tier(rows_data)
-                    class_folder = storage.pick_class_folder(tier, rows_data)
-                    if tier == 3:
-                        archived_path = None
-                        file_expires_at = None
-                    else:
-                        archived_path, file_expires_at = storage.archive_wav(
-                            audio_path, tier, class_folder,
-                            site_id, detection_time, BAT_AUDIO_DIR,
-                        )
-                    audio_saved_path = str(archived_path) if archived_path else None
-                    file_storage_tier = tier
-                    folder_str = f"/{class_folder}" if class_folder else ""
-                    max_det_prob = max((d.get("det_prob", 0.0) for d, _ in rows_data), default=0.0)
-                    max_pred_conf = max(
-                        (p["prediction_confidence"] for _, p in rows_data if p is not None),
-                        default=0.0,
-                    )
-                    print(
-                        f"  -> tier {tier}{folder_str} "
-                        f"(max det_prob={max_det_prob:.3f}, "
-                        f"max pred_conf={max_pred_conf:.3f}) "
-                        f"-> {audio_saved_path or '(no audio written)'}"
-                    )
-                elif UPLOAD_BAT_AUDIO:
-                    os.makedirs(BAT_AUDIO_DIR, exist_ok=True)
-                    audio_saved_path = f"{BAT_AUDIO_DIR}/{sync_id}.wav"
-                    shutil.copy2(audio_path, audio_saved_path)
-                    print(f"  -> Audio saved to {audio_saved_path}")
-
-                rows = []
-                for det, pred in rows_data:
-                    species = det.get("class", "Unknown")
-                    common_name = species  # BatDetect2 uses Latin names
-                    det_prob = det.get("det_prob", 0.0)
-                    start = det.get("start_time", 0.0)
-                    end = det.get("end_time", 0.0)
-                    low_freq = det.get("low_freq", 0.0)
-                    high_freq = det.get("high_freq", 0.0)
-                    duration_ms = (end - start) * 1000
-
-                    predicted_class = pred["predicted_class"] if pred else None
-                    prediction_confidence = pred["prediction_confidence"] if pred else None
-                    row_model_version = model_version if pred else None
-
-                    log_tail = (
-                        f" -> {predicted_class} ({prediction_confidence:.3f})"
-                        if pred else ""
-                    )
-                    print(f"  -> {species} (prob: {det_prob:.3f}, "
-                          f"freq: {low_freq/1000:.1f}-{high_freq/1000:.1f} kHz, "
-                          f"dur: {duration_ms:.1f} ms){log_tail}")
-
-                    rows.append((
-                        species, common_name, det_prob,
-                        start, end, low_freq, high_freq, duration_ms,
-                        device_name, sync_id, detection_time, audio_saved_path,
-                        predicted_class, prediction_confidence, row_model_version,
-                        file_storage_tier, file_expires_at,
-                    ))
-
+        # Audio-level + BD-stats + rejection sample for dashboard
+        # troubleshooting. One row per captured segment — auto-expired
+        # after 7 days by sync-service.
+        if rms is not None:
+            try:
                 conn = ensure_connection(conn)
                 with conn.cursor() as cur:
-                    execute_values(cur, """
-                        INSERT INTO bat_detections
-                        (species, common_name, detection_prob, start_time, end_time,
-                         low_freq, high_freq, duration_ms, device, sync_id,
-                         detection_time, audio_path,
-                         predicted_class, prediction_confidence, model_version,
-                         storage_tier, expires_at)
-                        VALUES %s
-                    """, rows)
-                conn.commit()
-            else:
-                # Validator rejections are logged every time so we can
-                # see what's being filtered; pure no-detection heartbeats
-                # stay at 1-per-10-segments to keep the log quiet.
-                if rejection_reason and (
-                    rejection_reason.startswith("validator:")
-                    or rejection_reason.startswith("shape:")
-                ):
-                    bd_tail = _format_bd_stats(bd_stats)
-                    print(f"[BAT] #{segment_count} | rejected by {rejection_reason}{bd_tail}")
-                elif segment_count % 10 == 0:
-                    # Listening heartbeat: include BD diagnostic stats so
-                    # "detector saw nothing" is distinguishable from
-                    # "detector saw weak sub-threshold signal."
-                    bd_tail = _format_bd_stats(bd_stats)
-                    print(f"[BAT] #{segment_count} | No bat calls detected{bd_tail}")
-
-            # Clean up temp file
-            await asyncio.sleep(0.5)
-
-        except Exception as e:
-            print(f"[BAT] Error in segment #{segment_count}: {e}")
-            conn = ensure_connection(conn)
-            try:
-                with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO capture_errors (service, error_type, message) "
-                        "VALUES (%s, %s, %s)",
-                        ("batdetect-service", type(e).__name__, str(e)[:500]),
+                        "INSERT INTO audio_levels "
+                        "(rms, peak, bd_raw_count, bd_max_det_prob, "
+                        " bd_user_pass, rejection_reason) "
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        (
+                            rms, peak,
+                            (bd_stats or {}).get("raw_count"),
+                            (bd_stats or {}).get("max_det_prob"),
+                            (bd_stats or {}).get("count_above_user"),
+                            rejection_reason,
+                        ),
                     )
                 conn.commit()
-            except Exception:
-                pass
-            await asyncio.sleep(5)
+            except Exception as e:
+                # Non-fatal: don't let telemetry kill capture.
+                print(f"[BAT] audio_levels write failed: {e}")
 
+        sync_id = str(uuid.uuid4())
+        detection_time = datetime.utcnow()
+
+        if rows_data:
+            print(f"[BAT] #{segment_count} | {len(rows_data)} bat call(s) detected!")
+
+            # Decide where the WAV goes. Tiering supersedes
+            # UPLOAD_BAT_AUDIO when enabled; otherwise fall back to the
+            # legacy "copy if UPLOAD_BAT_AUDIO" behavior.
+            audio_saved_path = None
+            file_storage_tier = None
+            file_expires_at = None
+
+            if enable_storage_tiering:
+                tier = storage.determine_tier(rows_data)
+                class_folder = storage.pick_class_folder(tier, rows_data)
+                if tier == 3:
+                    archived_path = None
+                    file_expires_at = None
+                else:
+                    archived_path, file_expires_at = storage.archive_wav(
+                        wav_path, tier, class_folder,
+                        site_id, detection_time, BAT_AUDIO_DIR,
+                    )
+                audio_saved_path = str(archived_path) if archived_path else None
+                file_storage_tier = tier
+                folder_str = f"/{class_folder}" if class_folder else ""
+                max_det_prob = max(
+                    (d.get("det_prob", 0.0) for d, _ in rows_data), default=0.0,
+                )
+                max_pred_conf = max(
+                    (p["prediction_confidence"] for _, p in rows_data if p is not None),
+                    default=0.0,
+                )
+                print(
+                    f"  -> tier {tier}{folder_str} "
+                    f"(max det_prob={max_det_prob:.3f}, "
+                    f"max pred_conf={max_pred_conf:.3f}) "
+                    f"-> {audio_saved_path or '(no audio written)'}"
+                )
+            elif UPLOAD_BAT_AUDIO:
+                os.makedirs(BAT_AUDIO_DIR, exist_ok=True)
+                audio_saved_path = f"{BAT_AUDIO_DIR}/{sync_id}.wav"
+                shutil.copy2(wav_path, audio_saved_path)
+                print(f"  -> Audio saved to {audio_saved_path}")
+
+            rows = []
+            for det, pred in rows_data:
+                species = det.get("class", "Unknown")
+                common_name = species  # BatDetect2 uses Latin names
+                det_prob = det.get("det_prob", 0.0)
+                start = det.get("start_time", 0.0)
+                end = det.get("end_time", 0.0)
+                low_freq = det.get("low_freq", 0.0)
+                high_freq = det.get("high_freq", 0.0)
+                duration_ms = (end - start) * 1000
+
+                predicted_class = pred["predicted_class"] if pred else None
+                prediction_confidence = pred["prediction_confidence"] if pred else None
+                row_model_version = model_version if pred else None
+
+                log_tail = (
+                    f" -> {predicted_class} ({prediction_confidence:.3f})"
+                    if pred else ""
+                )
+                print(f"  -> {species} (prob: {det_prob:.3f}, "
+                      f"freq: {low_freq/1000:.1f}-{high_freq/1000:.1f} kHz, "
+                      f"dur: {duration_ms:.1f} ms){log_tail}")
+
+                rows.append((
+                    species, common_name, det_prob,
+                    start, end, low_freq, high_freq, duration_ms,
+                    device_name, sync_id, detection_time, audio_saved_path,
+                    predicted_class, prediction_confidence, row_model_version,
+                    file_storage_tier, file_expires_at,
+                ))
+
+            conn = ensure_connection(conn)
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO bat_detections
+                    (species, common_name, detection_prob, start_time, end_time,
+                     low_freq, high_freq, duration_ms, device, sync_id,
+                     detection_time, audio_path,
+                     predicted_class, prediction_confidence, model_version,
+                     storage_tier, expires_at)
+                    VALUES %s
+                """, rows)
+            conn.commit()
+        else:
+            # Validator rejections are logged every time so we can
+            # see what's being filtered; pure no-detection heartbeats
+            # stay at 1-per-10-segments to keep the log quiet.
+            if rejection_reason and (
+                rejection_reason.startswith("validator:")
+                or rejection_reason.startswith("shape:")
+            ):
+                bd_tail = _format_bd_stats(bd_stats)
+                print(f"[BAT] #{segment_count} | rejected by {rejection_reason}{bd_tail}")
+            elif segment_count % 10 == 0:
+                # Listening heartbeat: include BD diagnostic stats so
+                # "detector saw nothing" is distinguishable from
+                # "detector saw weak sub-threshold signal."
+                bd_tail = _format_bd_stats(bd_stats)
+                print(f"[BAT] #{segment_count} | No bat calls detected{bd_tail}")
+
+    # Run producer + consumer concurrently. When the producer is in the
+    # middle of a 15-second arecord call, the event loop yields control
+    # back to the consumer to process the previous segment. Net effect:
+    # capture duty cycle goes from ~55 % (serial loop) to ~100 %.
+    await asyncio.gather(capture_producer(), detect_consumer())
 
 if __name__ == "__main__":
     asyncio.run(main())

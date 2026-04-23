@@ -141,12 +141,15 @@ def _load_pipeline_cfg() -> dict:
     """Pipeline knobs — defaults match the Pi's live batdetect-service."""
     return {
         "user_threshold": float(os.getenv("DETECTION_THRESHOLD", "0.3")),
-        "min_pred_conf": float(os.getenv("MIN_PREDICTION_CONF", "0.6")),
+        # 2026-04-23: lowered 0.6 → 0.3. See docker-compose.yml comment.
+        # Matches Pi so offline WAV analysis gates the same way as live.
+        "min_pred_conf": float(os.getenv("MIN_PREDICTION_CONF", "0.3")),
         "hpf_enabled": os.getenv("HPF_ENABLED", "true").lower() == "true",
         "hpf_cutoff_hz": float(os.getenv("HPF_CUTOFF_HZ", "16000")),
         "hpf_order": int(os.getenv("HPF_ORDER", "4")),
         "validator_enabled": os.getenv("VALIDATOR_ENABLED", "true").lower() == "true",
-        "validator_min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.005")),
+        # 2026-04-23: lowered 0.005 → 0.002. See docker-compose.yml comment.
+        "validator_min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.002")),
         "validator_min_snr_db": float(os.getenv("VALIDATOR_MIN_SNR_DB", "10.0")),
         "validator_min_burst_ratio": float(os.getenv("VALIDATOR_MIN_BURST_RATIO", "3.0")),
         "fm_sweep_enabled": os.getenv("FM_SWEEP_ENABLED", "true").lower() == "true",
