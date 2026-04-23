@@ -3,6 +3,7 @@
 src/bat_pipeline.py
 src/audio_validator.py
 src/classifier.py
+src/spectrogram.py
 models/*.pt
 
 # Python runtime

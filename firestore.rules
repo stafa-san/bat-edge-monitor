@@ -20,7 +20,19 @@ service cloud.firestore {
 
     match /batDetections/{doc} {
       allow read: if true;
-      allow write: if false;
+      allow create: if false;
+      // Updates: only on upload-sourced rows, and only to the four
+      // review fields. Prevents a hostile client from rewriting species
+      // labels, confidences, etc. on upload rows (and leaves live rows
+      // completely immutable from clients).
+      allow update: if resource.data.source == 'upload'
+                    && request.resource.data.diff(resource.data)
+                       .affectedKeys()
+                       .hasOnly(['reviewedBy', 'reviewedAt',
+                                 'verifiedClass', 'reviewerNotes']);
+      // Upload-sourced rows can be deleted by any client so the
+      // dashboard's "Clear all" button works; live rows stay safe.
+      allow delete: if resource.data.source == 'upload';
     }
 
     match /deviceStatus/{doc} {
@@ -53,7 +65,11 @@ service cloud.firestore {
                     && request.resource.data.filename is string
                     && request.resource.data.filename.size() <= 256
                     && request.resource.data.createdAt is timestamp;
-      allow update, delete: if false;
+      allow update: if false;
+      // Delete is open so the dashboard's "Clear all" button works.
+      // Safe in the current trusted-committee deployment; tighten
+      // with Firebase Auth rules later if the URL goes public.
+      allow delete: if true;
     }
 
     // Deny everything else

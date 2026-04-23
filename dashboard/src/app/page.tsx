@@ -94,11 +94,18 @@ export default function Dashboard() {
       }
     );
 
-    // Real-time listener for bat detections
+    // Real-time listener for bat detections. Limit raised to 500 so the
+    // Offline WAV Analysis panel can group upload-sourced rows by
+    // syncId (last 25 uploads × ~10 detections each = comfortably
+    // under 500). Both the Live feed and the Upload panel filter this
+    // one array client-side by ``source`` — keeps us on a single-field
+    // index and avoids the composite-index silent-fail that left the
+    // upload card showing "no bat calls" when the backing rows did
+    // exist.
     const batQuery = query(
       collection(db, "batDetections"),
       orderBy("detectionTime", "desc"),
-      limit(50)
+      limit(500)
     );
 
     const unsubBat = onSnapshot(
@@ -115,7 +122,7 @@ export default function Dashboard() {
         // Fallback: try without orderBy
         const fallbackQuery = query(
           collection(db, "batDetections"),
-          limit(50)
+          limit(500)
         );
         onSnapshot(fallbackQuery, (snapshot) => {
           const data = snapshot.docs.map((doc) => ({
@@ -282,9 +289,11 @@ export default function Dashboard() {
           batDetectionsTotal={deviceStatus?.batDetectionsTotal}
         />
 
-        {/* Bat Detection Feed — primary content */}
+        {/* Live Bat Detection Feed — only live-source rows. Upload-
+            sourced rows render inside the Offline WAV Analysis panel
+            instead, so the two pipelines never bleed into each other. */}
         <BatDetectionFeed
-          detections={batDetections}
+          detections={batDetections.filter((d) => d.source !== "upload")}
           totalDetections={deviceStatus?.batDetectionsTotal}
         />
 
@@ -303,7 +312,9 @@ export default function Dashboard() {
           onTimeRangeChange={setEnvTimeRange}
         />
 
-        <UploadAnalysisPanel />
+        <UploadAnalysisPanel
+          batDetections={batDetections.filter((d) => d.source === "upload")}
+        />
 
         {/* Acoustic Environment — secondary, collapsible */}
         <details className="group">

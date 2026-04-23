@@ -16,7 +16,7 @@ repo="$(cd "$here/.." && pwd)"
 src_dir="$repo/edge/batdetect-service/src"
 model_src="$repo/docker/models/groups_model.pt"
 
-for f in bat_pipeline.py audio_validator.py classifier.py; do
+for f in bat_pipeline.py audio_validator.py classifier.py spectrogram.py; do
     src="$src_dir/$f"
     if [[ ! -f "$src" ]]; then
         echo "FAIL: $src not found — cannot sync shared pipeline" >&2
@@ -36,4 +36,5 @@ echo "functions/ synced:"
 echo "  src/bat_pipeline.py        <- edge/batdetect-service/src/"
 echo "  src/audio_validator.py     <- edge/batdetect-service/src/"
 echo "  src/classifier.py          <- edge/batdetect-service/src/"
+echo "  src/spectrogram.py         <- edge/batdetect-service/src/"
 echo "  models/groups_model.pt     <- docker/models/"
