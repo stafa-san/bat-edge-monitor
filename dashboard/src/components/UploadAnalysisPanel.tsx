@@ -625,8 +625,28 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
                     </div>
                   </div>
                   <span
-                    className={`text-[11px] font-medium px-2 py-1 rounded-full border shrink-0 ${badge.className}`}
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border shrink-0 ${badge.className}`}
                   >
+                    {(job.status === "pending" || job.status === "processing") && (
+                      <svg
+                        className="animate-spin h-3 w-3"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          cx="12" cy="12" r="10"
+                          stroke="currentColor" strokeWidth="3"
+                          className="opacity-25"
+                        />
+                        <path
+                          d="M22 12a10 10 0 0 1-10 10"
+                          stroke="currentColor" strokeWidth="3"
+                          strokeLinecap="round"
+                          className="opacity-90"
+                        />
+                      </svg>
+                    )}
                     {badge.label}
                   </span>
                 </button>

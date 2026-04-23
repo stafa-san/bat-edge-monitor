@@ -51,14 +51,19 @@ from scipy.signal import spectrogram as _spectrogram
 # the hottest few percent of pixels light up as cyan+cream-yellow
 # (matching the warm highlight SonoBat puts on call tips).
 _SONOBAT_STOPS = [
+    # Iteration 5 (2026-04-23): the bright band was still spreading
+    # beyond the call tips. Pushed the cyan + cream highlights from
+    # 0.95–1.00 down to 0.985–1.00 so only the top ~1.5% of pixels
+    # brighten. Result: calls stay blue with just a pinprick warm tip
+    # at the FM hook, matching the reference.
     (0.00, "#000206"),  # near-black
     (0.15, "#020616"),  # very dark blue-black (quiet)
-    (0.32, "#06114a"),  # dark navy (noise speckle floor)
-    (0.52, "#0d2090"),  # deep royal blue (noise + faint calls)
-    (0.72, "#1c3fd8"),  # saturated blue (typical call body)
-    (0.86, "#3870ff"),  # bright pure blue (call peak mid)
-    (0.95, "#a8c8ff"),  # soft cyan (only thick-end tip)
-    (1.00, "#fff4c8"),  # pale cream-yellow (hottest pixel — the FM hook)
+    (0.35, "#06114a"),  # dark navy (noise speckle floor)
+    (0.58, "#0d2090"),  # deep royal blue (noise + faint calls)
+    (0.80, "#1c3fd8"),  # saturated blue (typical call body)
+    (0.94, "#3870ff"),  # bright pure blue (call peak mid — most of tip)
+    (0.985, "#a8c8ff"), # soft cyan — only the very top 1.5%
+    (1.00, "#fff4c8"),  # pale cream (hottest pixel only — pinprick at FM hook)
 ]
 
 
@@ -179,7 +184,13 @@ def generate_spectrogram(
         )
         times = times[:usable:chunk]
 
-    vmax = float(np.percentile(Sxx_db, 99))
+    # Iteration 5 (2026-04-23): sonobat uses a higher percentile so
+    # only the truly hottest pixels anchor the top of the palette —
+    # combined with the 0.985–1.00 bright band this confines the
+    # cream highlight to pinpricks at the FM hook instead of spreading
+    # across the call body.
+    vmax_percentile = 99.7 if settings["cmap_name"] == "sonobat" else 99.0
+    vmax = float(np.percentile(Sxx_db, vmax_percentile))
     vmin = vmax - settings["dynamic_range_db"]
 
     # Pick or build the colormap.
