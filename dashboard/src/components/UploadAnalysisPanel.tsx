@@ -56,14 +56,17 @@ interface UploadJob {
   rejectionReason?: string;
   rejectionMessage?: string;
   pipelineVersion?: string;
-  // Populated by the Cloud Function after every analysis. ``spectrogramUrl``
-  // is the clean version (no overlay, ecologist-friendly default);
-  // ``spectrogramAnnotatedUrl`` adds red bounding boxes on detected
-  // calls. When both exist the dashboard shows a toggle button so the
-  // user can flip between them. Legacy uploads from before the toggle
-  // feature only have ``spectrogramUrl`` (with boxes, no toggle).
-  spectrogramUrl?: string;
-  spectrogramAnnotatedUrl?: string;
+  // Populated by the Cloud Function after every analysis. We render
+  // four variants — two palettes (perceptually-uniform viridis and
+  // bat-research-style sonobat) each in clean + annotated forms.
+  // Dashboard combines the user's palette + show-detections toggles
+  // to pick one of the four URLs. Legacy uploads from before the
+  // palette feature only have viridis URLs; the sonobat option is
+  // gated on the new fields existing.
+  spectrogramUrl?: string;                  // viridis, clean (default)
+  spectrogramAnnotatedUrl?: string;         // viridis, red boxes
+  spectrogramSonobatUrl?: string;           // sonobat, clean
+  spectrogramSonobatAnnotatedUrl?: string;  // sonobat, red boxes
   // 10× slowdown of the uploaded WAV so ultrasonic bat calls become
   // audible (40 kHz → 4 kHz). Hosted in Firebase Storage under audio/.
   timeExpandedAudioUrl?: string;
@@ -786,16 +789,47 @@ function ExpandedJobView({
   );
 }
 
+type Palette = "viridis" | "sonobat";
+
 function SpectrogramView({ job }: { job: UploadJob }) {
-  // Default OFF so the clean spec is shown first — the red overlay is
-  // distracting for initial review. User clicks to reveal the
-  // classifier's called detections.
+  // Two independent toggles: palette + overlay. Default palette is
+  // viridis (perceptually uniform, safe for figures); default overlay
+  // is off (red boxes opt-in). User preference persists across cards
+  // in the same session via localStorage.
+  const [palette, setPalette] = useState<Palette>("viridis");
   const [showOverlay, setShowOverlay] = useState(false);
-  const hasToggle = !!(job.spectrogramUrl && job.spectrogramAnnotatedUrl);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("spectrogramPalette");
+    if (saved === "viridis" || saved === "sonobat") setPalette(saved);
+  }, []);
+
+  function pickPalette(p: Palette) {
+    setPalette(p);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("spectrogramPalette", p);
+    }
+  }
+
+  const sonobatAvailable = !!(
+    job.spectrogramSonobatUrl || job.spectrogramSonobatAnnotatedUrl
+  );
+  const hasOverlayToggle = !!(
+    job.spectrogramUrl && job.spectrogramAnnotatedUrl
+  );
+
+  // Resolve to a concrete URL. Falls back sensibly so legacy uploads
+  // (which only have the viridis URLs) still render when the user's
+  // last-used palette was sonobat.
   const src =
-    hasToggle && showOverlay
-      ? job.spectrogramAnnotatedUrl!
-      : job.spectrogramUrl!;
+    palette === "sonobat" && showOverlay && job.spectrogramSonobatAnnotatedUrl
+      ? job.spectrogramSonobatAnnotatedUrl
+      : palette === "sonobat" && job.spectrogramSonobatUrl
+      ? job.spectrogramSonobatUrl
+      : showOverlay && job.spectrogramAnnotatedUrl
+      ? job.spectrogramAnnotatedUrl
+      : job.spectrogramUrl;
 
   return (
     <div>
@@ -803,36 +837,74 @@ function SpectrogramView({ job }: { job: UploadJob }) {
         <p className="text-[10px] uppercase tracking-wide text-gray-500">
           Spectrogram
         </p>
-        {hasToggle && (
-          <button
-            type="button"
-            onClick={() => setShowOverlay((v) => !v)}
-            className={`text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
-              showOverlay
-                ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
-                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-            }`}
-            title={
-              showOverlay
-                ? "Hide the red detection boxes"
-                : "Overlay red boxes on detected bat calls"
-            }
-          >
-            {showOverlay ? "hide detections" : "show detections"}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {sonobatAvailable && (
+            <div className="flex text-[11px] rounded-md border border-gray-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => pickPalette("viridis")}
+                className={`px-2.5 py-1 transition-colors ${
+                  palette === "viridis"
+                    ? "bg-gray-900 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+                title="Perceptually-uniform palette. Safer for thesis figures."
+              >
+                viridis
+              </button>
+              <button
+                type="button"
+                onClick={() => pickPalette("sonobat")}
+                className={`px-2.5 py-1 transition-colors border-l border-gray-200 ${
+                  palette === "sonobat"
+                    ? "bg-gray-900 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+                title="Bat-research style — dark navy background, bright cyan call peaks, waveform strip."
+              >
+                sonobat
+              </button>
+            </div>
+          )}
+          {hasOverlayToggle && (
+            <button
+              type="button"
+              onClick={() => setShowOverlay((v) => !v)}
+              className={`text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
+                showOverlay
+                  ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+              }`}
+              title={
+                showOverlay
+                  ? "Hide the red detection boxes"
+                  : "Overlay red boxes + species labels on detected bat calls"
+              }
+            >
+              {showOverlay ? "hide detections" : "show detections"}
+            </button>
+          )}
+        </div>
       </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={`Spectrogram of ${job.filename ?? "upload"}`}
-        className="w-full rounded-lg border border-gray-200 bg-gray-50"
-      />
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={`Spectrogram of ${job.filename ?? "upload"} (${palette}${
+            showOverlay ? ", with detections" : ""
+          })`}
+          className="w-full rounded-lg border border-gray-200 bg-gray-50"
+        />
+      )}
       <p className="text-[10px] text-gray-400 mt-1">
-        {hasToggle
+        {palette === "sonobat"
           ? showOverlay
-            ? "Red boxes mark detected bat calls. Call details are in the list below, sorted in the same left-to-right order."
-            : "Clean view. Click \"show detections\" above to overlay boxes where the classifier found bat calls."
+            ? "SonoBat-style palette — bright cyan call peaks against dark navy, red boxes + species labels on detected calls."
+            : "SonoBat-style palette — bright cyan call peaks against dark navy. Waveform envelope below. Click \"show detections\" to overlay boxes."
+          : showOverlay
+          ? "Viridis palette, red boxes mark detected calls. Detection list below is sorted in the same left-to-right order."
+          : hasOverlayToggle
+          ? "Clean view. Click \"show detections\" above to overlay boxes where the classifier found bat calls."
           : "Clean view of the uploaded audio."}
       </p>
     </div>
