@@ -114,6 +114,7 @@ Supporting changes:
 - `BatAudioCapture.capture_segment` switched from `subprocess.check_call` to `asyncio.create_subprocess_exec`, so the 15-second `arecord` actually yields the event loop and the consumer can process the previous segment in parallel.
 - Each queued item carries its own `TemporaryDirectory` handle (the old `self._temp_dir` single-slot pattern raced when two segments were alive at once); consumer is responsible for `cleanup()`.
 - Queue `maxsize=3` means we buffer up to ~45 s of audio if detection stalls; producer blocks only when the buffer is full (graceful degradation rather than unbounded memory growth).
+- **Critical follow-up discovered in deploy verification**: the first producer/consumer iteration still showed the old ~28 s cadence. Root cause: the consumer's torch inference call (`_run_batdetect_with_classifier`) is synchronous and CPU-bound. Running it directly on the event loop blocked the producer's async `arecord.communicate()` wait for ~12 s per segment — the subprocess was finishing but asyncio couldn't process the "subprocess done" event until the sync block returned. Fix: wrap torch inference in `asyncio.to_thread(...)` so the event loop stays live while the CNN runs. Second deploy confirmed cadence dropped to the expected ~15 s.
 
 ### Expected post-fix behaviour
 
