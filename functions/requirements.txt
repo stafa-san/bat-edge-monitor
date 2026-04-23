@@ -9,6 +9,7 @@ firebase-admin>=6.0,<7.0
 # Pipeline core (matches edge/batdetect-service/requirements.txt intent)
 numpy>=1.24,<2.0
 scipy
+matplotlib
 torch==2.4.0
 torchaudio
 soundfile

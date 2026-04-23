@@ -176,6 +176,8 @@ def _mark_done(
     rejection_reason: Optional[str] = None,
     rejection_message: Optional[str] = None,
     stats: Optional[dict] = None,
+    spectrogram_url: Optional[str] = None,
+    time_expanded_audio_url: Optional[str] = None,
 ):
     species_found = sorted({
         (pred.get("predicted_class") or det.get("class") or "Unknown")
@@ -194,7 +196,98 @@ def _mark_done(
         payload["rejectionMessage"] = rejection_message or rejection_reason
     if stats:
         payload["stats"] = stats
+    if spectrogram_url:
+        payload["spectrogramUrl"] = spectrogram_url
+    if time_expanded_audio_url:
+        payload["timeExpandedAudioUrl"] = time_expanded_audio_url
     job_ref.update(payload)
+
+
+def _render_and_upload_time_expanded(bucket, wav_path: str, job_id: str, expansion: int = 10) -> Optional[str]:
+    """Render a time-expanded WAV so ultrasonic bat calls become audible.
+
+    Writes the same samples at 1/``expansion`` the sample rate — this
+    pitch-shifts everything down by the expansion factor (e.g. 40 kHz
+    bat call played back at 4 kHz, well within human hearing). Bat
+    researchers have used this trick for decades; it's the fastest
+    sanity-check for "is this actually a bat call?"
+
+    Uploaded to ``audio/{jobId}.expanded.wav`` with a Firebase download
+    token. Returns the URL or None on failure.
+    """
+    try:
+        import urllib.parse
+        import uuid
+        import soundfile as sf
+        from batdetect2 import api as bat_api
+
+        audio = bat_api.load_audio(wav_path)
+        sr = int(bat_api.get_config().get("target_samp_rate", 256000))
+        expanded_sr = max(sr // expansion, 8000)
+
+        expanded_path = wav_path + ".expanded.wav"
+        # 16-bit PCM for wide browser / <audio> tag compatibility.
+        sf.write(expanded_path, audio, expanded_sr, subtype="PCM_16")
+
+        blob = bucket.blob(f"audio/{job_id}.expanded.wav")
+        token = uuid.uuid4().hex
+        blob.metadata = {"firebaseStorageDownloadTokens": token}
+        blob.upload_from_filename(expanded_path, content_type="audio/wav")
+        blob.patch()
+
+        try:
+            os.unlink(expanded_path)
+        except OSError:
+            pass
+
+        encoded = urllib.parse.quote(blob.name, safe="")
+        return (
+            f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}"
+            f"/o/{encoded}?alt=media&token={token}"
+        )
+    except Exception as e:
+        print(f"[CF] time-expanded audio render/upload failed for {job_id}: {e}")
+        return None
+
+
+def _render_and_upload_spectrogram(bucket, wav_path: str, job_id: str, pairs, filename: str) -> Optional[str]:
+    """Generate a labelled PNG spectrogram and upload it to Firebase Storage.
+
+    Returns the download URL on success, None on any failure (never
+    raises — spectrogram is nice-to-have, not critical to the job).
+    """
+    try:
+        import urllib.parse
+        import uuid
+        from batdetect2 import api as bat_api
+        from src.spectrogram import generate_spectrogram
+
+        audio = bat_api.load_audio(wav_path)
+        sr = int(bat_api.get_config().get("target_samp_rate", 256000))
+
+        png_path = wav_path + ".spectrogram.png"
+        generate_spectrogram(audio, sr, pairs, png_path, title=filename)
+
+        blob = bucket.blob(f"spectrograms/{job_id}.png")
+        token = uuid.uuid4().hex
+        blob.metadata = {"firebaseStorageDownloadTokens": token}
+        blob.upload_from_filename(png_path, content_type="image/png")
+        # patch() persists the metadata so the token is attached.
+        blob.patch()
+
+        try:
+            os.unlink(png_path)
+        except OSError:
+            pass
+
+        encoded = urllib.parse.quote(blob.name, safe="")
+        return (
+            f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}"
+            f"/o/{encoded}?alt=media&token={token}"
+        )
+    except Exception as e:
+        print(f"[CF] spectrogram render/upload failed for {job_id}: {e}")
+        return None
 
 
 def _mark_error(job_ref, message: str):
@@ -266,6 +359,19 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
             tmp_path, classifier_model, classifier_ckpt, **pipeline_cfg,
         )
 
+        # Spectrogram — rendered for every outcome (even rejected
+        # segments) so advisors can see *why* the pipeline decided what
+        # it decided.
+        spectrogram_url = _render_and_upload_spectrogram(
+            bucket, tmp_path, job_id, result.detections, filename,
+        )
+        # Time-expanded (10×) audio — the 40 kHz bat call becomes a
+        # 4 kHz audible chirp. Ecologists rely on this to verify
+        # detector output by ear.
+        time_expanded_audio_url = _render_and_upload_time_expanded(
+            bucket, tmp_path, job_id,
+        )
+
         if result.detections:
             _write_detections(
                 db, job_id, result.detections,
@@ -275,6 +381,8 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 job_ref, result.detections, result.duration_seconds,
                 result.pipeline_version,
                 stats=result.stats,
+                spectrogram_url=spectrogram_url,
+                time_expanded_audio_url=time_expanded_audio_url,
             )
             print(
                 f"[CF] {job_id}: {len(result.detections)} detections "
@@ -288,6 +396,8 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 rejection_reason=result.rejection_reason,
                 rejection_message=human,
                 stats=result.stats,
+                spectrogram_url=spectrogram_url,
+                time_expanded_audio_url=time_expanded_audio_url,
             )
             print(
                 f"[CF] {job_id}: 0 detections "
