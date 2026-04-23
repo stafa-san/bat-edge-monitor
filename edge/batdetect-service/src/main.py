@@ -541,8 +541,18 @@ async def main():
 
                 rejection_reason = None
                 bd_stats = None
+                # Torch inference is sync + CPU-bound. Running it on the
+                # asyncio event loop would block the producer's arecord
+                # wait for ~12 s per segment, defeating the whole
+                # producer/consumer refactor. Offloading to a thread
+                # keeps the event loop free so the next arecord keeps
+                # ticking in parallel. Safe because we only do forward
+                # passes — the classifier model + ckpt are read-only
+                # after load, and torch inference is thread-safe for
+                # that use case.
                 if enable_classifier:
-                    rows_data, rejection_reason, bd_stats = _run_batdetect_with_classifier(
+                    rows_data, rejection_reason, bd_stats = await asyncio.to_thread(
+                        _run_batdetect_with_classifier,
                         wav_path, classifier_model, classifier_ckpt, config,
                         hpf_sos=hpf_sos, min_pred_conf=min_pred_conf,
                         validator_cfg=validator_cfg,
@@ -550,8 +560,8 @@ async def main():
                         user_threshold=threshold,
                     )
                 else:
-                    rows_data = _run_batdetect_legacy(
-                        wav_path, config, hpf_sos=hpf_sos
+                    rows_data = await asyncio.to_thread(
+                        _run_batdetect_legacy, wav_path, config, hpf_sos=hpf_sos,
                     )
 
                 # Model-health watchdog — "real audio but detector saw
