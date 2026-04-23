@@ -177,6 +177,7 @@ def _mark_done(
     rejection_message: Optional[str] = None,
     stats: Optional[dict] = None,
     spectrogram_url: Optional[str] = None,
+    spectrogram_annotated_url: Optional[str] = None,
     time_expanded_audio_url: Optional[str] = None,
 ):
     species_found = sorted({
@@ -198,6 +199,8 @@ def _mark_done(
         payload["stats"] = stats
     if spectrogram_url:
         payload["spectrogramUrl"] = spectrogram_url
+    if spectrogram_annotated_url:
+        payload["spectrogramAnnotatedUrl"] = spectrogram_annotated_url
     if time_expanded_audio_url:
         payload["timeExpandedAudioUrl"] = time_expanded_audio_url
     job_ref.update(payload)
@@ -250,44 +253,69 @@ def _render_and_upload_time_expanded(bucket, wav_path: str, job_id: str, expansi
         return None
 
 
-def _render_and_upload_spectrogram(bucket, wav_path: str, job_id: str, pairs, filename: str) -> Optional[str]:
-    """Generate a labelled PNG spectrogram and upload it to Firebase Storage.
+def _upload_png(bucket, local_path: str, remote_name: str) -> Optional[str]:
+    """Helper: upload a PNG to Firebase Storage with a download token."""
+    import urllib.parse
+    import uuid
 
-    Returns the download URL on success, None on any failure (never
-    raises — spectrogram is nice-to-have, not critical to the job).
+    blob = bucket.blob(remote_name)
+    token = uuid.uuid4().hex
+    blob.metadata = {"firebaseStorageDownloadTokens": token}
+    blob.upload_from_filename(local_path, content_type="image/png")
+    blob.patch()
+    encoded = urllib.parse.quote(blob.name, safe="")
+    return (
+        f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}"
+        f"/o/{encoded}?alt=media&token={token}"
+    )
+
+
+def _render_and_upload_spectrograms(bucket, wav_path: str, job_id: str, pairs, filename: str) -> tuple:
+    """Render TWO spectrograms (clean + annotated) and upload both.
+
+    Returns ``(clean_url, annotated_url)`` — either can be None on
+    failure (never raises; spec is nice-to-have, not critical).
+
+    The dashboard defaults to the clean view and offers a toggle button
+    to overlay the annotated version. Dense passes (20+ calls in 15 s)
+    cover the spec with red boxes — toggling is kinder on the eye.
     """
+    clean_url: Optional[str] = None
+    annotated_url: Optional[str] = None
     try:
-        import urllib.parse
-        import uuid
         from batdetect2 import api as bat_api
         from src.spectrogram import generate_spectrogram
 
         audio = bat_api.load_audio(wav_path)
         sr = int(bat_api.get_config().get("target_samp_rate", 256000))
 
-        png_path = wav_path + ".spectrogram.png"
-        generate_spectrogram(audio, sr, pairs, png_path, title=filename)
+        clean_path = wav_path + ".spec.clean.png"
+        annotated_path = wav_path + ".spec.annotated.png"
 
-        blob = bucket.blob(f"spectrograms/{job_id}.png")
-        token = uuid.uuid4().hex
-        blob.metadata = {"firebaseStorageDownloadTokens": token}
-        blob.upload_from_filename(png_path, content_type="image/png")
-        # patch() persists the metadata so the token is attached.
-        blob.patch()
-
-        try:
-            os.unlink(png_path)
-        except OSError:
-            pass
-
-        encoded = urllib.parse.quote(blob.name, safe="")
-        return (
-            f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}"
-            f"/o/{encoded}?alt=media&token={token}"
+        generate_spectrogram(
+            audio, sr, pairs, clean_path,
+            title=filename, with_boxes=False,
         )
+        generate_spectrogram(
+            audio, sr, pairs, annotated_path,
+            title=filename, with_boxes=True,
+        )
+
+        clean_url = _upload_png(
+            bucket, clean_path, f"spectrograms/{job_id}.clean.png",
+        )
+        annotated_url = _upload_png(
+            bucket, annotated_path, f"spectrograms/{job_id}.annotated.png",
+        )
+
+        for p in (clean_path, annotated_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
     except Exception as e:
         print(f"[CF] spectrogram render/upload failed for {job_id}: {e}")
-        return None
+    return clean_url, annotated_url
 
 
 def _mark_error(job_ref, message: str):
@@ -361,8 +389,9 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
 
         # Spectrogram — rendered for every outcome (even rejected
         # segments) so advisors can see *why* the pipeline decided what
-        # it decided.
-        spectrogram_url = _render_and_upload_spectrogram(
+        # it decided. Two variants so the dashboard can toggle the
+        # overlay on/off — clean is the default view.
+        spectrogram_url, spectrogram_annotated_url = _render_and_upload_spectrograms(
             bucket, tmp_path, job_id, result.detections, filename,
         )
         # Time-expanded (10×) audio — the 40 kHz bat call becomes a
@@ -382,6 +411,7 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 result.pipeline_version,
                 stats=result.stats,
                 spectrogram_url=spectrogram_url,
+                spectrogram_annotated_url=spectrogram_annotated_url,
                 time_expanded_audio_url=time_expanded_audio_url,
             )
             print(
@@ -397,6 +427,7 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 rejection_message=human,
                 stats=result.stats,
                 spectrogram_url=spectrogram_url,
+                spectrogram_annotated_url=spectrogram_annotated_url,
                 time_expanded_audio_url=time_expanded_audio_url,
             )
             print(
