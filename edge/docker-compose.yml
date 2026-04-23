@@ -52,7 +52,14 @@ services:
       # the extra out-of-distribution noise. See DETECTION_TUNING_PLAYBOOK.md
       # and bat_pipeline.py CLASSIFIER_TRAINING_DET_THRESHOLD comment.
       - DETECTION_THRESHOLD=0.3
-      - MIN_PREDICTION_CONF=${MIN_PREDICTION_CONF:-0.6}
+      # 2026-04-23: lowered default 0.6 → 0.3 after field audit. Our
+      # groups classifier sits on a UK-trained BatDetect2 backbone
+      # that is systematically under-confident on NA bats (see
+      # RETRAINED_NA_DETECTOR_PLAN.md). 0.6 was rejecting real Ohio
+      # calls where the classifier was 40–55% confident. FM-sweep
+      # shape filter + audio validator + BatDetect2 user_threshold
+      # absorb the extra out-of-distribution noise.
+      - MIN_PREDICTION_CONF=${MIN_PREDICTION_CONF:-0.3}
       - SEGMENT_DURATION=15
       - HPF_ENABLED=${HPF_ENABLED:-true}
       - HPF_CUTOFF_HZ=${HPF_CUTOFF_HZ:-16000}
@@ -62,7 +69,15 @@ services:
       # itself is silence / broadband noise (e.g. the 0.0012-RMS file
       # that got through on 2026-04-20).
       - VALIDATOR_ENABLED=${VALIDATOR_ENABLED:-true}
-      - VALIDATOR_MIN_RMS=${VALIDATOR_MIN_RMS:-0.005}
+      # 2026-04-23: lowered default 0.005 → 0.002 after field audit.
+      # The validator runs on the whole 15 s segment, so a real 10 ms
+      # bat call gets averaged across 15000 ms — a distant bat with
+      # call peak ≈ 0.05 has whole-segment RMS ≈ 0.0013, which was
+      # getting rejected even after BatDetect2 + classifier agreed.
+      # 0.002 is just above the observed noise floor (0.0018 min over
+      # 24 h). SNR check (10 dB) + burst_ratio (3.0) still catch
+      # silent/broadband segments.
+      - VALIDATOR_MIN_RMS=${VALIDATOR_MIN_RMS:-0.002}
       - VALIDATOR_MIN_SNR_DB=${VALIDATOR_MIN_SNR_DB:-10.0}
       - VALIDATOR_MIN_BURST_RATIO=${VALIDATOR_MIN_BURST_RATIO:-3.0}
       # Per-detection FM-sweep + low-band shape filter (4th gate).
