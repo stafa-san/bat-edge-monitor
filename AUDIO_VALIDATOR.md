@@ -33,12 +33,12 @@ uploaded.
              │
              ▼
   ┌─────────────────────┐
-  │  BatDetect2 base    │  det_prob ≥ DETECTION_THRESHOLD (0.5)
+  │  BatDetect2 base    │  det_prob ≥ DETECTION_THRESHOLD (0.3; was 0.5)
   └─────────────────────┘
              │  survivors
              ▼
   ┌─────────────────────┐
-  │  NA-groups          │  prediction_confidence ≥ MIN_PREDICTION_CONF (0.6)
+  │  NA-groups          │  prediction_confidence ≥ MIN_PREDICTION_CONF (0.3; was 0.6)
   │  classifier head    │
   └─────────────────────┘
              │  survivors
@@ -78,12 +78,17 @@ rms = sqrt(mean(audio**2))
 if rms < min_rms: reject
 ```
 
-Default: `VALIDATOR_MIN_RMS = 0.005`.
+Default: `VALIDATOR_MIN_RMS = 0.002` (canonical since 2026-04-23 —
+was 0.005 originally, dropped after the live-pipeline audit; see
+[`PIPELINE_AUDIT_AND_FIXES.md`](PIPELINE_AUDIT_AND_FIXES.md) §5).
 
-Catches near-silent segments. Any real bat call produces localized
-energy that raises RMS above this. The 2026-04-20 6:59 PM false
-positive was at RMS 0.0012, well below this floor, so even a single
-check would have caught it.
+Catches near-silent segments. At 0.002 it's still well above the
+noise floor (observed 24 h min ≈ 0.0018), so silent sub-validator
+floor segments are filtered, but medium-distance bats whose 10 ms
+call gets RMS-averaged across a 15 s segment now pass through to
+the SNR + burst tests instead of being rejected here. The
+2026-04-20 6:59 PM silent false positive (RMS 0.0012) is still
+blocked.
 
 ### Check 2 — Bat-band peak-to-median SNR
 
@@ -157,9 +162,9 @@ Every rejection logs a reason:
 If you spot-check a "rejected" spectrogram and see a real call the
 validator missed, adjust the corresponding env var:
 
-| Env var | Default | Lower to allow more through |
+| Env var | Current default | Lower to allow more through |
 | --- | --- | --- |
-| `VALIDATOR_MIN_RMS` | 0.005 | 0.002 for very quiet sites |
+| `VALIDATOR_MIN_RMS` | **0.002** (was 0.005) | 0.001 for extremely quiet sites (risk: RMS check is nearly no-op) |
 | `VALIDATOR_MIN_SNR_DB` | 10.0 | 8.0 for noisy sites |
 | `VALIDATOR_MIN_BURST_RATIO` | 3.0 | 2.0 if losing short transients |
 | `VALIDATOR_ENABLED` | `true` | `false` disables entirely |
@@ -176,7 +181,7 @@ No rebuild required — the values are read at container startup.
 Startup log confirms the active config:
 
 ```
-[BAT] Audio validator enabled — min_rms=0.005, min_snr_db=10.0, min_burst_ratio=3.0
+[BAT] Audio validator enabled — min_rms=0.002, min_snr_db=10.0, min_burst_ratio=3.0
 ```
 
 ## Why this is the right layer

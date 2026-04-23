@@ -320,7 +320,10 @@ async def main():
     device_name = os.getenv("DEVICE_NAME", "AudioMoth")
     sample_rate = int(os.getenv("SAMPLE_RATE", "192000"))
     threshold = float(os.getenv("DETECTION_THRESHOLD", "0.3"))
-    min_pred_conf = float(os.getenv("MIN_PREDICTION_CONF", "0.6"))
+    # Canonical default 0.3 — see PIPELINE_AUDIT_AND_FIXES.md. Groups
+    # classifier sits on a UK-trained backbone under-confident on NA
+    # bats. Downstream FM-sweep + validator absorb OOD noise.
+    min_pred_conf = float(os.getenv("MIN_PREDICTION_CONF", "0.3"))
     segment_duration = int(os.getenv("SEGMENT_DURATION", "5"))
     enable_classifier = os.getenv("ENABLE_GROUPS_CLASSIFIER", "false").lower() == "true"
     enable_storage_tiering = os.getenv("ENABLE_STORAGE_TIERING", "false").lower() == "true"
@@ -331,7 +334,11 @@ async def main():
     # Audio-level validator (signal-processing sanity check, no ML).
     validator_cfg = {
         "enabled": os.getenv("VALIDATOR_ENABLED", "true").lower() == "true",
-        "min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.005")),
+        # Canonical default 0.002 — see PIPELINE_AUDIT_AND_FIXES.md.
+        # RMS over the whole 15 s segment averages down a 10 ms distant
+        # call; 0.005 was rejecting real faint bats. Shape filter + SNR
+        # + burst_ratio still catch noise.
+        "min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.002")),
         "min_snr_db": float(os.getenv("VALIDATOR_MIN_SNR_DB", "10.0")),
         "min_burst_ratio": float(os.getenv("VALIDATOR_MIN_BURST_RATIO", "3.0")),
     }

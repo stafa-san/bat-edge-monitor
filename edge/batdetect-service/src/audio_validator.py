@@ -230,7 +230,11 @@ def has_bat_call_shape(
 def is_likely_bat_call(
     audio: Optional[np.ndarray],
     sr: int,
-    min_rms: float = 0.005,
+    # 2026-04-23: min_rms canonical default dropped 0.005 → 0.002 after
+    # the live-pipeline audit (PIPELINE_AUDIT_AND_FIXES.md). 0.005 was
+    # rejecting medium-distance real bats because the RMS is averaged
+    # across the whole 15 s segment; SNR + burst tests still catch noise.
+    min_rms: float = 0.002,
     min_snr_db: float = 10.0,
     min_burst_ratio: float = 3.0,
 ) -> Tuple[bool, str]:
