@@ -353,6 +353,45 @@ async def main():
     config["detection_threshold"] = threshold
     print("[BAT] BatDetect2 ready")
 
+    # Warm-up forward pass. Forces BatDetect2 to fully initialise its
+    # lazy weights + any torch JIT state before the capture loop starts
+    # taking real segments. If the model boots in a degenerate state
+    # (see BATDETECT2_STABILITY_FIX.md for the Cloud-Function incident
+    # where this exact failure mode silently ate a day's detections),
+    # the warm-up will either detect the synthetic chirp (good — model
+    # is alive) or return 0 detections on 30 kHz energy the model
+    # absolutely should see (bad — crash and let Docker restart us).
+    # Cheap insurance: ~1 s at boot saves the nightmare of the Pi
+    # running for weeks reporting "no bats" when bats are present.
+    try:
+        import torch
+        # Pin torch RNG + thread count. Pi 5 has 4 cores; give all of
+        # them to BatDetect2 (unlike the CF where we pinned to 1 due
+        # to shared-vCPU contention).
+        torch.manual_seed(0)
+        torch.set_num_threads(max(1, os.cpu_count() or 4))
+        _wu_sr = int(config.get("target_samp_rate", 256000))
+        _wu_t = np.linspace(0.0, 1.0, _wu_sr, endpoint=False, dtype=np.float32)
+        _wu_audio = (
+            0.1 * np.sin(2 * np.pi * 30_000 * _wu_t)
+            + 0.01 * np.random.randn(_wu_sr).astype(np.float32)
+        ).astype(np.float32)
+        _wu_dets, _, _ = bat_api.process_audio(_wu_audio, config=config)
+        print(f"[BAT] BatDetect2 warm-up complete (raw_dets={len(_wu_dets)})")
+        if len(_wu_dets) == 0:
+            # Model returned 0 detections on a 30 kHz chirp in its own
+            # target band. Don't silently run — crash and let Docker
+            # restart us. Better a loud restart loop than a week of
+            # missed bats in the field.
+            raise RuntimeError(
+                "BatDetect2 warm-up saw 0 detections on a synthetic "
+                "30 kHz chirp — model is in a degenerate state. "
+                "Crashing so Docker restarts the container."
+            )
+    except Exception as exc:
+        print(f"[BAT] BatDetect2 warm-up FAILED: {exc}")
+        raise
+
     classifier_model = None
     classifier_ckpt = None
     if enable_classifier:
@@ -396,6 +435,25 @@ async def main():
     )
 
     segment_count = 0
+    # Model-health watchdog — tracks consecutive segments where the
+    # detector returned raw_count=0 AND the audio clearly wasn't
+    # silent. Lots of "no bats" segments during a quiet afternoon is
+    # fine; lots of "no bats" segments with audio_rms above the
+    # validator floor is the CF-nondeterminism signature from
+    # BATDETECT2_STABILITY_FIX.md applied to the Pi. Log-only for
+    # now — no auto-restart until we've seen this trigger under real
+    # field conditions and know the tuning is right. The daily-summary
+    # email already surfaces bd_raw_avg so sustained health issues are
+    # visible next morning even without this per-loop check.
+    _health_consecutive_bad = 0
+    # Threshold: once we've seen N bad segments in a row, log a loud
+    # warning. At segment_duration=15s, N=20 ≈ 5 minutes of "loud
+    # audio + no detections" — well beyond normal bat-absent silence.
+    _HEALTH_BAD_THRESHOLD = 20
+    # What counts as "audio is real, not ambient silence." 2× the
+    # validator's min_rms is a conservative floor — if the mic is
+    # picking up anything above this, something is making sound.
+    _HEALTH_MIN_RMS = 2.0 * validator_cfg.get("min_rms", 0.005)
 
     while True:
         try:
@@ -430,6 +488,41 @@ async def main():
                 )
             else:
                 rows_data = _run_batdetect_legacy(audio_path, config, hpf_sos=hpf_sos)
+
+            # Model-health watchdog. "Real audio but detector saw
+            # literally nothing" is the silent-failure signature from
+            # the CF incident; if it starts happening on the Pi we
+            # want to know in the container logs within minutes, not
+            # in tomorrow's summary email.
+            _raw_count = (bd_stats or {}).get("raw_count") or 0
+            if rms is not None and rms > _HEALTH_MIN_RMS and _raw_count == 0:
+                _health_consecutive_bad += 1
+                if _health_consecutive_bad == _HEALTH_BAD_THRESHOLD:
+                    print(
+                        f"[BAT] MODEL-HEALTH WARNING: {_HEALTH_BAD_THRESHOLD} "
+                        f"consecutive segments with rms>{_HEALTH_MIN_RMS:.4f} "
+                        f"and raw_count=0 — detector may be in a degenerate "
+                        f"state. See BATDETECT2_STABILITY_FIX.md. Consider "
+                        f"`docker compose restart batdetect-service` to force "
+                        f"a warm-up reload."
+                    )
+                elif _health_consecutive_bad > _HEALTH_BAD_THRESHOLD and \
+                     _health_consecutive_bad % _HEALTH_BAD_THRESHOLD == 0:
+                    # Keep logging every N more segments so ops know
+                    # the issue is persistent, not just a spike.
+                    print(
+                        f"[BAT] MODEL-HEALTH WARNING: still bad "
+                        f"({_health_consecutive_bad} consecutive segments)"
+                    )
+            else:
+                if _health_consecutive_bad >= _HEALTH_BAD_THRESHOLD:
+                    # Recovered — log the recovery so the log narrative
+                    # shows both directions of the transition.
+                    print(
+                        f"[BAT] MODEL-HEALTH RECOVERED after "
+                        f"{_health_consecutive_bad} bad segments"
+                    )
+                _health_consecutive_bad = 0
 
             # Audio-level + BD-stats + rejection sample for dashboard
             # troubleshooting. One row per captured segment — auto-

@@ -104,9 +104,43 @@ Fix #1 (thread pin) and fix #2 (warm-up) live in `functions/main.py` — Cloud F
 
 But — **silent model-load corruption is still technically possible** on Pi at container boot. Under current code, if the Pi's torch install somehow loads the BatDetect2 model in a degenerate state, the Pi would happily run for days reporting "bd_raw=0" on every segment with no indication anything was wrong.
 
-### Recommended Pi-side add (optional but nice)
+### Pi-side additions shipped 2026-04-23 (pre-deploy)
 
-Add this block in `edge/batdetect-service/src/main.py` right after the existing `print("[BAT] BatDetect2 ready")` around line 354:
+All three below are already in `dev` and `main` — they just haven't been
+deployed to the Pi yet because the Pi is offline. Next `docker compose build
+batdetect-service` + `docker compose up -d batdetect-service` picks them up.
+
+1. **Warm-up at container boot** — in `edge/batdetect-service/src/main.py`,
+   added right after "BatDetect2 ready". Runs a 30 kHz synthetic chirp through
+   the detector. If the model returns 0 detections on the chirp, the container
+   crashes and Docker restart policy recycles it. Loud restart loop beats
+   silent weeks of missed bats.
+
+2. **Model-health watchdog** — logs `[BAT] MODEL-HEALTH WARNING` if 20
+   consecutive segments had `raw_count=0` while `audio_rms` was above
+   2× the validator's `min_rms` floor. Log-only (no auto-restart) until
+   we've seen the tuning behave under real field conditions.
+
+3. **Daily-summary model-health alert** — `collect_summary()` sets
+   `model_health_alert=True` if the 24h window had ≥100 segments, `bd_raw_avg=0`,
+   and `audio_rms_p50 ≥ 0.005`. Both text + HTML summary render a loud ⚠ line
+   recommending `docker compose restart batdetect-service`.
+
+### How to run the golden-file regression test
+
+`edge/scripts/test_pipeline_golden.py` — run this after every container rebuild:
+
+```bash
+docker compose exec batdetect-service \
+    python /app/edge/scripts/test_pipeline_golden.py \
+    --wav /app/test_wavs/known_bat_activity.wav \
+    --min-raw-detections 20
+```
+
+Exits non-zero with a loud message if the detector regresses to the
+degenerate state. CI-compatible; expected to be quick (~10 s for a 15 s clip).
+
+### For reference — the original snippet (now superseded by what's shipping)
 
 ```python
 # Warm-up: force a full BatDetect2 forward pass on synthetic audio
