@@ -1,0 +1,14 @@
+{
+  "_comment": "GCS object lifecycle rules for the Firebase Storage bucket. Apply with: gsutil lifecycle set firebase/storage-lifecycle.json gs://<bucket-name>. Re-apply whenever this file changes. The 'uploads/' prefix matches user-initiated WAV uploads from the dashboard; the 7-day delete keeps the bucket bounded without the worker having to manage deletions.",
+  "lifecycle": {
+    "rule": [
+      {
+        "action": { "type": "Delete" },
+        "condition": {
+          "age": 7,
+          "matchesPrefix": ["uploads/"]
+        }
+      }
+    ]
+  }
+}

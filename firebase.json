@@ -1,5 +1,27 @@
 {
   "firestore": {
     "rules": "firestore.rules"
-  }
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "python312",
+      "predeploy": [
+        "bash ./functions/build.sh"
+      ],
+      "ignore": [
+        "venv",
+        ".venv",
+        "__pycache__",
+        "*.pyc",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
+    }
+  ]
 }
