@@ -1,0 +1,15 @@
+# Firebase Cloud Functions runtime for offline WAV analysis.
+# Must stay in sync with the worker-path subset of
+# edge/analysis-api/requirements.txt so Pi and Cloud behave identically.
+
+# Firebase Functions SDK + Admin
+firebase-functions>=0.4.0
+firebase-admin>=6.0,<7.0
+
+# Pipeline core (matches edge/batdetect-service/requirements.txt intent)
+numpy>=1.24,<2.0
+scipy
+torch==2.4.0
+torchaudio
+soundfile
+batdetect2==1.3.1

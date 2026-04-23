@@ -1,13 +1,21 @@
+# Core — used by the Firebase-driven worker (src.worker) + shared pipeline.
+numpy>=1.24,<2.0
+scipy
+torch==2.4.0
+torchaudio
+soundfile
+batdetect2==1.3.1
+psycopg2-binary
+firebase-admin>=6.0,<7.0
+google-cloud-storage>=2.10
+
+# Dead deps — still wired up so the legacy FastAPI HTTP path
+# (src.main) remains buildable. Flip the Dockerfile CMD back to
+# `uvicorn src.main:app` to use it.
 fastapi
 uvicorn[standard]
 python-multipart
-numpy>=1.24,<2.0
 librosa
-soundfile
-torch==2.4.0
-torchaudio
 transformers
-batdetect2==1.3.1
 scikit-maad
 pandas
-psycopg2-binary
