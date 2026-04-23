@@ -860,9 +860,9 @@ function SpectrogramView({ job }: { job: UploadJob }) {
                     ? "bg-gray-900 text-white"
                     : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
-                title="Bat-research style — dark navy background, bright cyan call peaks, waveform strip."
+                title="Bat-research style — dark navy background, deep blue calls with a warm highlight at the FM hook."
               >
-                sonobat
+                sonobat style
               </button>
             </div>
           )}
@@ -899,8 +899,8 @@ function SpectrogramView({ job }: { job: UploadJob }) {
       <p className="text-[10px] text-gray-400 mt-1">
         {palette === "sonobat"
           ? showOverlay
-            ? "SonoBat-style palette — bright cyan call peaks against dark navy, red boxes + species labels on detected calls."
-            : "SonoBat-style palette — bright cyan call peaks against dark navy. Waveform envelope below. Click \"show detections\" to overlay boxes."
+            ? "SonoBat-style palette — deep blue call bodies with a warm highlight at the FM hook, red boxes + species labels on detected calls."
+            : "SonoBat-style palette — deep blue call bodies with a warm highlight at the FM hook. Click \"show detections\" to overlay boxes."
           : showOverlay
           ? "Viridis palette, red boxes mark detected calls. Detection list below is sorted in the same left-to-right order."
           : hasOverlayToggle

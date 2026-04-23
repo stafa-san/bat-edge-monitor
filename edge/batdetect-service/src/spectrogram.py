@@ -40,14 +40,25 @@ from scipy.signal import spectrogram as _spectrogram
 # Dr. Johnson's corpus.
 # -----------------------------------------------------------------------------
 
+# Tuning iteration 4 (2026-04-23): compared side-by-side with the real
+# SonoBat reference. Iteration 3 was still too cyan-dominated — the
+# brightness extended up the whole vertical arch of each call, whereas
+# SonoBat keeps most of the call body a saturated royal blue and only
+# brightens to cyan/white at the thick end where the FM sweep bends.
+#
+# The ramp is now heavily blue-weighted: ambient speckle sits in deep
+# navy, the bulk of each call body stays in royal/pure blue, and only
+# the hottest few percent of pixels light up as cyan+cream-yellow
+# (matching the warm highlight SonoBat puts on call tips).
 _SONOBAT_STOPS = [
-    (0.00, "#000a1a"),  # near-black, navy tint
-    (0.22, "#0a2a5a"),  # dark blue
-    (0.45, "#1c58a4"),  # medium blue
-    (0.65, "#3a8cd6"),  # bright blue
-    (0.80, "#66c7f0"),  # cyan
-    (0.92, "#b2e8ff"),  # light cyan
-    (1.00, "#f4fbff"),  # near-white highlight
+    (0.00, "#000206"),  # near-black
+    (0.15, "#020616"),  # very dark blue-black (quiet)
+    (0.32, "#06114a"),  # dark navy (noise speckle floor)
+    (0.52, "#0d2090"),  # deep royal blue (noise + faint calls)
+    (0.72, "#1c3fd8"),  # saturated blue (typical call body)
+    (0.86, "#3870ff"),  # bright pure blue (call peak mid)
+    (0.95, "#a8c8ff"),  # soft cyan (only thick-end tip)
+    (1.00, "#fff4c8"),  # pale cream-yellow (hottest pixel — the FM hook)
 ]
 
 
@@ -58,12 +69,31 @@ def _palette_settings(palette: str) -> dict:
             "nperseg_sec": 0.0015,   # 1.5 ms — fine time resolution so
                                      # each call's downward FM sweep is
                                      # visible as a distinct curved stripe
-            "overlap": 0.90,         # very high overlap → smooth sweep curves
-            "dynamic_range_db": 42,  # tight clip → calls glow, background
-                                     # compresses to near-black
+            "overlap": 0.80,         # iteration 3 (2026-04-23): 0.90 was
+                                     # generating ~98k STFT frames on a
+                                     # 15s clip and timing out the CF at
+                                     # render time. 0.80 halves the frame
+                                     # count while keeping sweeps smooth.
+            "dynamic_range_db": 36,  # iteration 3 (2026-04-23): widened
+                                     # from 30 so ambient noise floor has
+                                     # visible texture instead of clipping
+                                     # to the bottom palette stop. Pairs
+                                     # with the softer top stop to stop
+                                     # call peaks glowing as neon.
             "cmap_name": "sonobat",
-            "grid": True,
-            "waveform_strip": True,
+            "grid": False,         # iteration 4 (2026-04-23): the real
+                                   # SonoBat reference has no horizontal
+                                   # grid lines. Earlier 5/20 kHz grid
+                                   # was our addition — dropped to match.
+            "waveform_strip": False,  # iteration 4 (2026-04-23): green
+                                      # envelope strip dropped — not in
+                                      # the SonoBat reference and not
+                                      # adding decision-useful info.
+            "max_display_cols": 2000,  # max-pool the time axis before
+                                       # pcolormesh so render cost stays
+                                       # bounded regardless of input length.
+                                       # Max-pool (not mean) keeps bright
+                                       # call peaks intact.
         }
     # viridis default — what was already shipping
     return {
@@ -73,6 +103,10 @@ def _palette_settings(palette: str) -> dict:
         "cmap_name": "viridis",
         "grid": False,
         "waveform_strip": False,
+        "max_display_cols": 2500,  # same safety cap as sonobat; viridis
+                                   # STFT is coarser so rarely triggers
+                                   # downsampling, but caps pathological
+                                   # long inputs either way.
     }
 
 
@@ -129,6 +163,22 @@ def generate_spectrogram(
 
     with np.errstate(divide="ignore"):
         Sxx_db = 20.0 * np.log10(np.maximum(Sxx, 1e-12))
+
+    # Max-pool the time axis so pcolormesh doesn't choke on dense
+    # high-overlap STFTs. We max-pool (not mean) on purpose — bat calls
+    # are short bright transients, and averaging would smear them into
+    # the surrounding quiet. 2000 columns is plenty for a 1200 px image.
+    max_cols = int(settings.get("max_display_cols", 2500))
+    if Sxx_db.shape[1] > max_cols:
+        chunk = Sxx_db.shape[1] // max_cols
+        usable = max_cols * chunk
+        Sxx_db = (
+            Sxx_db[:, :usable]
+            .reshape(Sxx_db.shape[0], max_cols, chunk)
+            .max(axis=2)
+        )
+        times = times[:usable:chunk]
+
     vmax = float(np.percentile(Sxx_db, 99))
     vmin = vmax - settings["dynamic_range_db"]
 
