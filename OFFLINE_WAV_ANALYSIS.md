@@ -276,6 +276,84 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 Then re-expose port 8080 in `docker-compose.yml`. The old LAN-only flow is still there — `src/main.py` is unchanged.
 
+## Future features (not yet built)
+
+These are parked here rather than in a ticketing system so the next
+person to touch this file has context for what we decided NOT to do
+and why.
+
+### Real-time audio scrubbing with synchronised spectrogram cursor
+
+SonoBat has a "play real sound" / "play TE sound" interaction: press
+play, and a vertical cursor sweeps across the spectrogram in sync with
+the audio position. You can click anywhere on the spectrogram to jump
+playback to that timestamp, or drag to play a section. Very useful for
+bioacoustics review because the *auditory* and *visual* streams
+reinforce each other.
+
+**Why we don't have it yet:**
+- Our spectrogram is a pre-rendered static PNG served from Firebase
+  Storage. No overlay surface to draw a cursor on without browser-side
+  re-rendering.
+- The time-expanded audio is a separate `<audio>` element with no
+  coordinate knowledge of the PNG below it.
+
+**What it would take:**
+- Either render the spectrogram client-side (Web Audio API +
+  `<canvas>` + FFT). Gives real interactivity but loses the pixel
+  fidelity of matplotlib.
+- Or keep the PNG, overlay an SVG layer on top whose x-coordinate
+  system matches the plot area. Listen to `<audio>` `timeupdate`
+  events and translate current time → pixel position. Click handler
+  does the inverse.
+- Either way, need to solve: the spectrogram PNG has variable margins
+  from matplotlib's `tight_layout`, so the "time axis 0" and
+  "time axis max" pixel positions aren't known exactly without
+  cropping the image to the plot area. Doable — either crop on the
+  server (render the plot area only, no axes), or ship the plot-area
+  bounding box as metadata on the upload job.
+
+**Effort estimate:** 1-2 weeks for a polished implementation. Not
+blocking thesis work; shortlist for post-MS.
+
+### Spectrogram zoom / pan
+
+SonoBat lets you zoom into a specific call and pan across the file.
+Ours is fixed at full-file view. Same approach as the cursor feature:
+either render client-side, or provide a zoom API that requests a new
+PNG at a different time window from the Cloud Function. The
+server-side path is simpler (request zoom, get a new PNG) but adds
+round-trip latency; client-side is snappier but engineering-heavy.
+
+### Spectrogram multi-view (viridis + sonobat side-by-side)
+
+Currently the user toggles between the two palettes. Having both
+visible at once — especially for committee review — would make
+cross-palette sanity-checking easier. Implementation is a layout
+change only; both PNGs are already generated.
+
+### Per-detection audio snippet playback
+
+Click a detection row → play just that call (with maybe ±50 ms
+padding), in time-expanded form. Server generates a short WAV per
+detection (10 KB each). Doable; punishing the Storage budget slightly
+but under budget at realistic upload volumes.
+
+### Multi-file batch upload
+
+Currently one WAV at a time. Researchers often review dozens of files
+in a session. Batch upload: drop 20 WAVs, each becomes its own
+`uploadJobs` entry, processed in parallel by the CF (which scales
+horizontally for free). Dashboard shows a progress-per-file grid. Low
+engineering cost; main question is whether Dr. Johnson reviews one
+file at a time or batches.
+
+### Per-session / per-site dashboards
+
+Group uploads by "review session" or "recording site" with aggregate
+metrics (species composition, call rate over time, dominant
+frequencies). Useful for field reports.
+
 ## Known limitations
 
 - **AST is dead code.** The Acoustic Environment / AudioSet panel was already disabled via the Docker profile on the Pi; the worker does not run AST either. The code in `src/main.py` still compiles if you ever flip back to the HTTP path.
