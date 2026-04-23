@@ -178,6 +178,8 @@ def _mark_done(
     stats: Optional[dict] = None,
     spectrogram_url: Optional[str] = None,
     spectrogram_annotated_url: Optional[str] = None,
+    spectrogram_sonobat_url: Optional[str] = None,
+    spectrogram_sonobat_annotated_url: Optional[str] = None,
     time_expanded_audio_url: Optional[str] = None,
 ):
     species_found = sorted({
@@ -201,6 +203,10 @@ def _mark_done(
         payload["spectrogramUrl"] = spectrogram_url
     if spectrogram_annotated_url:
         payload["spectrogramAnnotatedUrl"] = spectrogram_annotated_url
+    if spectrogram_sonobat_url:
+        payload["spectrogramSonobatUrl"] = spectrogram_sonobat_url
+    if spectrogram_sonobat_annotated_url:
+        payload["spectrogramSonobatAnnotatedUrl"] = spectrogram_sonobat_annotated_url
     if time_expanded_audio_url:
         payload["timeExpandedAudioUrl"] = time_expanded_audio_url
     job_ref.update(payload)
@@ -270,18 +276,30 @@ def _upload_png(bucket, local_path: str, remote_name: str) -> Optional[str]:
     )
 
 
-def _render_and_upload_spectrograms(bucket, wav_path: str, job_id: str, pairs, filename: str) -> tuple:
-    """Render TWO spectrograms (clean + annotated) and upload both.
+def _render_and_upload_spectrograms(bucket, wav_path: str, job_id: str, pairs, filename: str) -> dict:
+    """Render FOUR spectrograms (2 palettes × clean/annotated) and
+    upload all of them. Dashboard picks one based on the user's
+    toggle state.
 
-    Returns ``(clean_url, annotated_url)`` — either can be None on
-    failure (never raises; spec is nice-to-have, not critical).
+    Returns a dict of URLs keyed by field name — any individual URL
+    can be None on failure (never raises; specs are nice-to-have, not
+    critical to the job).
 
-    The dashboard defaults to the clean view and offers a toggle button
-    to overlay the annotated version. Dense passes (20+ calls in 15 s)
-    cover the spec with red boxes — toggling is kinder on the eye.
+    Variants:
+      * ``viridis_clean``    — default, perceptually-uniform palette
+      * ``viridis_annotated`` — same palette, red detection boxes
+      * ``sonobat_clean``    — bat-research style, no boxes
+      * ``sonobat_annotated`` — bat-research style, with boxes
+
+    The doubled upload cost (~200 KB total per job instead of 100 KB)
+    is negligible under the 7-day Storage TTL.
     """
-    clean_url: Optional[str] = None
-    annotated_url: Optional[str] = None
+    urls: dict = {
+        "viridis_clean": None,
+        "viridis_annotated": None,
+        "sonobat_clean": None,
+        "sonobat_annotated": None,
+    }
     try:
         from batdetect2 import api as bat_api
         from src.spectrogram import generate_spectrogram
@@ -289,33 +307,37 @@ def _render_and_upload_spectrograms(bucket, wav_path: str, job_id: str, pairs, f
         audio = bat_api.load_audio(wav_path)
         sr = int(bat_api.get_config().get("target_samp_rate", 256000))
 
-        clean_path = wav_path + ".spec.clean.png"
-        annotated_path = wav_path + ".spec.annotated.png"
+        variants = [
+            # (key, local filename, remote filename, palette, with_boxes)
+            ("viridis_clean",     ".spec.v_c.png", "viridis.clean.png",     "viridis", False),
+            ("viridis_annotated", ".spec.v_a.png", "viridis.annotated.png", "viridis", True),
+            ("sonobat_clean",     ".spec.s_c.png", "sonobat.clean.png",     "sonobat", False),
+            ("sonobat_annotated", ".spec.s_a.png", "sonobat.annotated.png", "sonobat", True),
+        ]
 
-        generate_spectrogram(
-            audio, sr, pairs, clean_path,
-            title=filename, with_boxes=False,
-        )
-        generate_spectrogram(
-            audio, sr, pairs, annotated_path,
-            title=filename, with_boxes=True,
-        )
+        paths = []
+        for key, local_suffix, remote_name, palette, with_boxes in variants:
+            try:
+                p = wav_path + local_suffix
+                generate_spectrogram(
+                    audio, sr, pairs, p,
+                    title=filename, with_boxes=with_boxes, palette=palette,
+                )
+                paths.append(p)
+                urls[key] = _upload_png(
+                    bucket, p, f"spectrograms/{job_id}.{remote_name}",
+                )
+            except Exception as e:
+                print(f"[CF] spectrogram {key} failed for {job_id}: {e}")
 
-        clean_url = _upload_png(
-            bucket, clean_path, f"spectrograms/{job_id}.clean.png",
-        )
-        annotated_url = _upload_png(
-            bucket, annotated_path, f"spectrograms/{job_id}.annotated.png",
-        )
-
-        for p in (clean_path, annotated_path):
+        for p in paths:
             try:
                 os.unlink(p)
             except OSError:
                 pass
     except Exception as e:
         print(f"[CF] spectrogram render/upload failed for {job_id}: {e}")
-    return clean_url, annotated_url
+    return urls
 
 
 def _mark_error(job_ref, message: str):
@@ -387,13 +409,18 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
             tmp_path, classifier_model, classifier_ckpt, **pipeline_cfg,
         )
 
-        # Spectrogram — rendered for every outcome (even rejected
+        # Spectrograms — rendered for every outcome (even rejected
         # segments) so advisors can see *why* the pipeline decided what
-        # it decided. Two variants so the dashboard can toggle the
-        # overlay on/off — clean is the default view.
-        spectrogram_url, spectrogram_annotated_url = _render_and_upload_spectrograms(
+        # it decided. FOUR variants (viridis / sonobat × clean /
+        # annotated) so the dashboard can toggle palette and overlay
+        # independently.
+        spec_urls = _render_and_upload_spectrograms(
             bucket, tmp_path, job_id, result.detections, filename,
         )
+        spectrogram_url = spec_urls.get("viridis_clean")
+        spectrogram_annotated_url = spec_urls.get("viridis_annotated")
+        spectrogram_sonobat_url = spec_urls.get("sonobat_clean")
+        spectrogram_sonobat_annotated_url = spec_urls.get("sonobat_annotated")
         # Time-expanded (10×) audio — the 40 kHz bat call becomes a
         # 4 kHz audible chirp. Ecologists rely on this to verify
         # detector output by ear.
@@ -412,6 +439,8 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 stats=result.stats,
                 spectrogram_url=spectrogram_url,
                 spectrogram_annotated_url=spectrogram_annotated_url,
+                spectrogram_sonobat_url=spectrogram_sonobat_url,
+                spectrogram_sonobat_annotated_url=spectrogram_sonobat_annotated_url,
                 time_expanded_audio_url=time_expanded_audio_url,
             )
             print(
@@ -428,6 +457,8 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 stats=result.stats,
                 spectrogram_url=spectrogram_url,
                 spectrogram_annotated_url=spectrogram_annotated_url,
+                spectrogram_sonobat_url=spectrogram_sonobat_url,
+                spectrogram_sonobat_annotated_url=spectrogram_sonobat_annotated_url,
                 time_expanded_audio_url=time_expanded_audio_url,
             )
             print(
