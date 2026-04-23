@@ -44,11 +44,14 @@ services:
       # would force BatDetect2 to do its own resample, an extra step for
       # no gain — all bat calls of interest are <120 kHz.
       - SAMPLE_RATE=256000
-      # Matches training: BatDetect2 features were filtered at
-      # det_prob > 0.5 when the classifier head was trained. Inference
-      # uses the same threshold so classifier inputs stay in the
-      # training distribution. See BATDETECT2_TRAINING.md section 1.
-      - DETECTION_THRESHOLD=0.5
+      # BatDetect2 threshold — lowered 2026-04-23 from 0.5 to 0.3
+      # after the 005517.wav false-negative experiment. UK-trained
+      # BatDetect2 is systematically under-confident on NA bats; 0.5
+      # dropped real passes outright. Downstream gates (min_pred_conf
+      # 0.6 + FM-sweep shape filter + audio-level validator) absorb
+      # the extra out-of-distribution noise. See DETECTION_TUNING_PLAYBOOK.md
+      # and bat_pipeline.py CLASSIFIER_TRAINING_DET_THRESHOLD comment.
+      - DETECTION_THRESHOLD=0.3
       - MIN_PREDICTION_CONF=${MIN_PREDICTION_CONF:-0.6}
       - SEGMENT_DURATION=15
       - HPF_ENABLED=${HPF_ENABLED:-true}

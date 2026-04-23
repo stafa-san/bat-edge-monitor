@@ -60,7 +60,7 @@ MODEL_VERSION = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-
 def _load_pipeline_cfg() -> dict:
     """Read every pipeline knob from env. Defaults match Pi live config."""
     return {
-        "user_threshold": float(os.getenv("DETECTION_THRESHOLD", "0.5")),
+        "user_threshold": float(os.getenv("DETECTION_THRESHOLD", "0.3")),
         "min_pred_conf": float(os.getenv("MIN_PREDICTION_CONF", "0.6")),
         "hpf_enabled": os.getenv("HPF_ENABLED", "true").lower() == "true",
         "hpf_cutoff_hz": float(os.getenv("HPF_CUTOFF_HZ", "16000")),
