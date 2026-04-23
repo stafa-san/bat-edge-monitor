@@ -326,8 +326,10 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
     }
   }
 
-  // Group the injected detections by the upload job they came from.
-  // Recomputed on every snapshot update — cheap.
+  // Group the injected detections by the upload job they came from,
+  // then sort each group by start_time ascending so left-to-right box
+  // order on the spectrogram matches top-to-bottom row order in the
+  // detection list. Ecologists mentally pair box[i] ↔ row[i].
   const detectionsBySyncId = useMemo(() => {
     const grouped = new Map<string, any[]>();
     for (const det of batDetections) {
@@ -335,6 +337,9 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
       if (!sid) continue;
       if (!grouped.has(sid)) grouped.set(sid, []);
       grouped.get(sid)!.push(det);
+    }
+    for (const list of grouped.values()) {
+      list.sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0));
     }
     return grouped;
   }, [batDetections]);
