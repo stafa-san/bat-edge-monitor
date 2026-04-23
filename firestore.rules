@@ -20,7 +20,12 @@ service cloud.firestore {
 
     match /batDetections/{doc} {
       allow read: if true;
-      allow write: if false;
+      // Writes: only Admin SDK (Cloud Function + sync-service) can
+      // create/update. Upload-sourced rows can be deleted by any client
+      // so the dashboard's "Clear all" button works; live rows stay
+      // immutable from clients (only Admin SDK can delete them).
+      allow create, update: if false;
+      allow delete: if resource.data.source == 'upload';
     }
 
     match /deviceStatus/{doc} {
@@ -53,7 +58,11 @@ service cloud.firestore {
                     && request.resource.data.filename is string
                     && request.resource.data.filename.size() <= 256
                     && request.resource.data.createdAt is timestamp;
-      allow update, delete: if false;
+      allow update: if false;
+      // Delete is open so the dashboard's "Clear all" button works.
+      // Safe in the current trusted-committee deployment; tighten
+      // with Firebase Auth rules later if the URL goes public.
+      allow delete: if true;
     }
 
     // Deny everything else

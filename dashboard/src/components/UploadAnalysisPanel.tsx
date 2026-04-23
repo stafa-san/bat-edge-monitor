@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
+  deleteDoc,
   doc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  where,
+  writeBatch,
   Timestamp,
 } from "firebase/firestore";
 
@@ -120,6 +124,8 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
   const [uploadingEntry, setUploadingEntry] = useState<UploadJob | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const uploadHandleRef = useRef<UploadHandle | null>(null);
 
   // Group the injected detections by the upload job they came from.
@@ -168,6 +174,41 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleClearAll() {
+    setClearing(true);
+    try {
+      // Grab every uploadJobs doc and every upload-sourced detection
+      // row, batch-delete them. Rules enforce that only upload rows can
+      // be deleted (live rows stay safe).
+      const jobsSnap = await getDocs(collection(db, "uploadJobs"));
+      const detsSnap = await getDocs(
+        query(collection(db, "batDetections"), where("source", "==", "upload")),
+      );
+      const allDocs = [...jobsSnap.docs, ...detsSnap.docs];
+      // Firestore batches cap at 500 writes. Chunk if we're over.
+      const CHUNK = 400;
+      for (let i = 0; i < allDocs.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        for (const d of allDocs.slice(i, i + CHUNK)) {
+          batch.delete(d.ref);
+        }
+        await batch.commit();
+      }
+      // Synthetic "uploading" entry should vanish too if the user
+      // started an upload and wants a hard reset.
+      setUploadingEntry(null);
+      setExpandedIds(new Set());
+    } catch (err) {
+      console.error("[UploadAnalysis] Clear failed:", err);
+      setSubmitError(
+        err instanceof Error ? `Clear failed: ${err.message}` : "Clear failed.",
+      );
+    } finally {
+      setClearing(false);
+      setShowClearConfirm(false);
+    }
   }
 
   async function handleAnalyze(event: React.FormEvent<HTMLFormElement>) {
@@ -280,12 +321,56 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
         <h3 className="text-sm font-semibold text-gray-700">
           Recent uploads
         </h3>
-        {jobsToRender.length > 0 && (
-          <span className="text-xs text-gray-500">
-            last {jobsToRender.length}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {jobsToRender.length > 0 && (
+            <span className="text-xs text-gray-500">
+              last {jobsToRender.length}
+            </span>
+          )}
+          {jobsToRender.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(true)}
+              disabled={clearing}
+              className="text-xs text-red-600 hover:text-red-700 hover:underline disabled:text-red-300 disabled:cursor-not-allowed"
+            >
+              {clearing ? "clearing…" : "clear all"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {showClearConfirm && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+          <p className="font-medium text-red-800">
+            Clear all upload history?
+          </p>
+          <p className="text-red-700 mt-1 text-xs">
+            Deletes every upload job and every upload-sourced detection
+            from Firestore. Live Pi captures are unaffected. This cannot
+            be undone — the WAVs in Firebase Storage age out on their
+            own 7-day lifecycle, but DB metadata is gone immediately.
+          </p>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              onClick={handleClearAll}
+              disabled={clearing}
+              className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:bg-red-300"
+            >
+              {clearing ? "clearing…" : "yes, clear everything"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(false)}
+              disabled={clearing}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {jobsToRender.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
