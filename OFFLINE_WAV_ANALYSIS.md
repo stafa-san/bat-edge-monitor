@@ -6,6 +6,53 @@ Upload a `.wav` from the dashboard, get bat-call detections back in-place — fr
 
 We need Dr. Johnson (and anyone else on an approved link) to be able to validate that the classification pipeline works on known recordings without waiting for a wild bat to fly past the Pi, and without being on the Pi's Wi-Fi. The old `analysis-api` exposed an HTTP port and only worked when the browser and Pi were on the same LAN. Now uploads flow through Firebase, so anywhere with a browser works.
 
+## Pipeline parity with the Pi's live capture path
+
+The upload worker calls the same 4-gate pipeline the Pi's `batdetect-service` runs on every live mic capture. A WAV uploaded from a browser anywhere in the world gets the identical treatment as a WAV the AudioMoth produced:
+
+1. **HPF at 16 kHz** (in-memory) — defensive; bat calls are >20 kHz, everything below is pre-removed.
+2. **BatDetect2** at a permissive diagnostic threshold for logging, then a user-threshold gate (`det_prob ≥ 0.5`) matching training.
+3. **Groups classifier head** (NA 5-class: EPFU_LANO, LABO, LACI, MYSP, PESU) with `prediction_confidence ≥ 0.6`.
+4. **FM-sweep + low-band-ratio shape filter** (per detection) — rejects broadband clicks.
+5. **Segment-level audio validator** (RMS / bat-band SNR / burst ratio) — rejects silence and broadband noise.
+
+### Single source of truth
+
+The pipeline lives in [`edge/batdetect-service/src/bat_pipeline.py`](edge/batdetect-service/src/bat_pipeline.py). The cloud worker's `Dockerfile` COPYs that file (and `audio_validator.py`, `classifier.py`) into the analysis-api image at build time. Any pipeline change is one edit to `bat_pipeline.py`; both deployments pick it up on next build.
+
+Every detection written to Postgres and Firestore carries a `pipelineVersion` field (currently `v1-2026-04-22`). If Pi and Cloud drift, detection rows will show mismatched versions and the drift is visible in the DB.
+
+### Dashboard-visible rejection reasons
+
+A live capture that doesn't pass all gates just moves on — no row written. That's correct for continuous capture (hardware won't be confused by silence). But for an *upload*, the user is staring at the dashboard waiting for an answer. So the worker always writes a `rejectionReason` + `rejectionMessage` to the `uploadJobs` doc when `detectionCount=0`:
+
+| Rejection code (prefix) | Human-readable message |
+|---|---|
+| `batdetect2_no_detections` | "BatDetect2 found no echolocation signatures in this recording." |
+| `all_below_user_threshold` | "Detected signals, but none above the confidence threshold." |
+| `all_below_min_pred_conf` | "Signals found, but classifier confidence was below the keep-threshold — no bat species identified." |
+| `shape:broadband_noise(...)` | "Detected signals, but all looked like broadband clicks rather than bat calls." |
+| `shape:chaotic_peaks(...)` | "Detected signals with erratic frequency patterns — not a downward-sweep bat call." |
+| `shape:not_downward_sweep(...)` | "Detected signals but none had the downward frequency sweep of a bat call." |
+| `validator:rms_too_low(...)` | "Audio appears to be silence or very quiet — no bat calls." |
+| `validator:snr_too_low(...)` | "Audio is mostly broadband noise — no bat-call signature detected." |
+| `validator:no_burst(...)` | "Audio has no transient burst — likely steady-state noise, not an echolocation pass." |
+
+The dashboard renders `rejectionMessage` verbatim in the upload card when `detectionCount=0`, so the user never sees a blank "0 detections" and wonders if the system is broken.
+
+## Deploy sync strategy (Pi ↔ Cloud)
+
+When you edit `bat_pipeline.py` or any of its dependencies (`audio_validator.py`, `classifier.py`):
+
+| What changed | Pi rebuild | Cloud rebuild |
+|---|---|---|
+| `bat_pipeline.py` | `docker compose build batdetect-service analysis-api && docker compose up -d` on Pi | `firebase deploy --only functions` from your Mac (Stage 5+, once the Firebase Cloud Function is deployed) |
+| `audio_validator.py` / `classifier.py` | same as above | same as above |
+| Pi-only code (e.g. ALSA capture in `batdetect-service/src/main.py`) | Pi rebuild | no cloud rebuild needed |
+| Cloud-only code (e.g. Firestore trigger in Cloud Function) | no Pi rebuild needed | cloud redeploy |
+
+To detect drift: query for `SELECT DISTINCT pipeline_version FROM bat_detections` in Postgres or inspect recent `batDetections` Firestore docs. More than one version value across the two deployments = drift.
+
 ## How it works
 
 ```

@@ -1,5 +1,6 @@
-# Core — used by the Firebase-driven worker (src.worker).
+# Core — used by the Firebase-driven worker (src.worker) + shared pipeline.
 numpy>=1.24,<2.0
+scipy
 torch==2.4.0
 torchaudio
 soundfile

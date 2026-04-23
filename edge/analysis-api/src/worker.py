@@ -1,52 +1,79 @@
 """Firebase-driven upload worker for offline WAV analysis.
 
-Replaces the old HTTP API with a polling loop so uploads can originate
-from *anywhere* (not just the LAN). Flow:
+Polls Firestore ``uploadJobs`` for user-uploaded .wav files, runs the
+shared 4-gate bat-analysis pipeline (``bat_pipeline.run_full_pipeline``),
+and writes detections back so they appear in the dashboard's Offline
+WAV Analysis panel.
 
-  1. Dashboard uploads a .wav to Firebase Storage at ``uploads/{jobId}.wav``
-     and creates a Firestore doc ``uploadJobs/{jobId}`` with ``status='pending'``.
-  2. This worker polls ``uploadJobs`` every few seconds, claims the oldest
-     pending job, downloads the WAV, runs BatDetect2 + groups classifier.
-  3. Detection rows are written to Postgres (``source='upload'``, ``synced=TRUE``)
-     AND directly to Firestore ``batDetections`` so the dashboard sees them
-     instantly — bypasses the sync-service's 60s cadence for uploads.
-  4. ``uploadJobs/{jobId}`` transitions to ``status='done'`` (or ``'error'``)
-     with a summary the dashboard can render without re-querying.
+Key design points:
 
-The legacy FastAPI HTTP app in ``main.py`` stays as dead code. Flip the
-Dockerfile ``CMD`` back to ``uvicorn src.main:app`` if you ever want LAN
-HTTP uploads again.
+* Uses the **same pipeline module** as the Pi's live ``batdetect-service``,
+  so an uploaded WAV and a mic-captured WAV traverse identical gates
+  (HPF → BatDetect2 → classifier → FM-sweep → audio validator).
+* Writes detections to Firestore ``batDetections`` directly (no 60s
+  ``sync-service`` delay) so dashboard updates are immediate.
+* Postgres is optional — when unavailable, runs in Firestore-only mode.
+  Lets the worker run on the Pi *or* on any other machine (Mac, Cloud
+  Run, Cloud Functions).
+* On zero-detection results, writes a ``rejectionReason`` to the
+  ``uploadJobs`` doc so the user sees *why* nothing was identified
+  instead of a blank "0 detections" card.
 
-Env vars (all optional):
-  * ``FIREBASE_STORAGE_BUCKET``      — required; same bucket as sync-service
-  * ``UPLOAD_POLL_INTERVAL_SEC``     — default 5
-  * ``UPLOAD_JOBS_COLLECTION``       — default 'uploadJobs'
-  * ``BAT_DETECTIONS_COLLECTION``    — default 'batDetections'
-  * ``UPLOAD_DEVICE_LABEL``          — default 'upload'
+Env vars — all optional, defaults match ``batdetect-service`` Pi config:
+
+* ``FIREBASE_STORAGE_BUCKET``   — required
+* ``MODEL_PATH``                — classifier checkpoint path
+* ``MODEL_VERSION``             — recorded on every detection row
+* ``UPLOAD_POLL_INTERVAL_SEC``  — default 5
+* ``DETECTION_THRESHOLD``       — user-threshold gate (default 0.5)
+* ``MIN_PREDICTION_CONF``       — classifier-confidence gate (default 0.6)
+* ``HPF_ENABLED``, ``HPF_CUTOFF_HZ``, ``HPF_ORDER``
+* ``VALIDATOR_ENABLED``, ``VALIDATOR_MIN_RMS``, ``VALIDATOR_MIN_SNR_DB``, ``VALIDATOR_MIN_BURST_RATIO``
+* ``FM_SWEEP_ENABLED``, ``FM_SWEEP_MIN_SLOPE``, ``FM_SWEEP_MAX_LOW_BAND_RATIO``, ``FM_SWEEP_MIN_R2``
 """
 
 import os
 import time
 import traceback
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from tempfile import NamedTemporaryFile
+from typing import Optional
 
 import firebase_admin
 import psycopg2
-import soundfile as sf
 from firebase_admin import credentials, firestore, storage as fb_storage
 from psycopg2.extras import execute_values
 
-# ``run_batdetect`` in main.py is self-contained — importing it does not
-# start a FastAPI server. We keep the HTTP module intact as a fallback.
-from src.main import run_batdetect  # noqa: E402
+from src import bat_pipeline
+from src.classifier import load_groups_classifier
 
 
 POLL_INTERVAL_SEC = int(os.getenv("UPLOAD_POLL_INTERVAL_SEC", "5"))
 UPLOAD_JOBS_COLLECTION = os.getenv("UPLOAD_JOBS_COLLECTION", "uploadJobs")
 BAT_DETECTIONS_COLLECTION = os.getenv("BAT_DETECTIONS_COLLECTION", "batDetections")
 DEVICE_LABEL = os.getenv("UPLOAD_DEVICE_LABEL", "upload")
+
+MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/groups_model.pt")
+MODEL_VERSION = os.getenv("MODEL_VERSION", "groups_v1_post_epfu_partial_2026-04-17")
+
+
+def _load_pipeline_cfg() -> dict:
+    """Read every pipeline knob from env. Defaults match Pi live config."""
+    return {
+        "user_threshold": float(os.getenv("DETECTION_THRESHOLD", "0.5")),
+        "min_pred_conf": float(os.getenv("MIN_PREDICTION_CONF", "0.6")),
+        "hpf_enabled": os.getenv("HPF_ENABLED", "true").lower() == "true",
+        "hpf_cutoff_hz": float(os.getenv("HPF_CUTOFF_HZ", "16000")),
+        "hpf_order": int(os.getenv("HPF_ORDER", "4")),
+        "validator_enabled": os.getenv("VALIDATOR_ENABLED", "true").lower() == "true",
+        "validator_min_rms": float(os.getenv("VALIDATOR_MIN_RMS", "0.005")),
+        "validator_min_snr_db": float(os.getenv("VALIDATOR_MIN_SNR_DB", "10.0")),
+        "validator_min_burst_ratio": float(os.getenv("VALIDATOR_MIN_BURST_RATIO", "3.0")),
+        "fm_sweep_enabled": os.getenv("FM_SWEEP_ENABLED", "true").lower() == "true",
+        "fm_sweep_min_slope": float(os.getenv("FM_SWEEP_MIN_SLOPE", "-0.1")),
+        "fm_sweep_max_low_band_ratio": float(os.getenv("FM_SWEEP_MAX_LOW_BAND_RATIO", "0.5")),
+        "fm_sweep_min_r2": float(os.getenv("FM_SWEEP_MIN_R2", "0.2")),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -70,15 +97,29 @@ def init_firebase():
 
 
 def get_db_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST", "db"),
-        dbname=os.getenv("DB_NAME", "soundscape"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "changeme"),
-    )
+    """Open a Postgres connection, or return None if the DB is unreachable.
+
+    Postgres is optional for the worker: the dashboard reads detections
+    from Firestore, which we always write. Skipping the Postgres write
+    lets the worker run anywhere (Mac, Cloud Run, Cloud Functions)
+    without needing the Pi's local DB.
+    """
+    try:
+        return psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            dbname=os.getenv("DB_NAME", "soundscape"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "changeme"),
+            connect_timeout=3,
+        )
+    except Exception as e:
+        print(f"[WORKER] Postgres unavailable ({e}) — running in Firestore-only mode")
+        return None
 
 
 def ensure_connection(conn):
+    if conn is None:
+        return None
     try:
         conn.cursor().execute("SELECT 1")
         return conn
@@ -96,11 +137,6 @@ def ensure_connection(conn):
 # ---------------------------------------------------------------------------
 
 def _claim_next_pending_job(db):
-    """Return (job_doc_ref, job_data) for the oldest pending job, or None.
-
-    Not strictly atomic across multiple workers — but we run one worker
-    per Pi, so the race is theoretical.
-    """
     pending = (
         db.collection(UPLOAD_JOBS_COLLECTION)
         .where("status", "==", "pending")
@@ -127,18 +163,34 @@ def _mark_error(job_ref, message: str):
     })
 
 
-def _mark_done(job_ref, detections, duration_seconds):
+def _mark_done(
+    job_ref,
+    detections,
+    duration_seconds: float,
+    *,
+    rejection_reason: Optional[str] = None,
+    rejection_message: Optional[str] = None,
+    stats: Optional[dict] = None,
+    pipeline_version: str = bat_pipeline.PIPELINE_VERSION,
+):
     species_found = sorted({
         d.get("predicted_class") or d.get("species") or "Unknown"
         for d in detections
     })
-    job_ref.update({
+    payload = {
         "status": "done",
         "detectionCount": len(detections),
         "speciesFound": species_found,
         "durationSeconds": round(duration_seconds, 2),
+        "pipelineVersion": pipeline_version,
         "completedAt": firestore.SERVER_TIMESTAMP,
-    })
+    }
+    if rejection_reason:
+        payload["rejectionReason"] = rejection_reason
+        payload["rejectionMessage"] = rejection_message or rejection_reason
+    if stats:
+        payload["stats"] = stats
+    job_ref.update(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -153,46 +205,63 @@ def _download_wav(bucket, job_id: str, dest_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-#  Persistence
+#  Persistence — flatten the pipeline's (det, pred) tuples into the
+#  same row shape live captures produce, then write Postgres + Firestore.
 # ---------------------------------------------------------------------------
 
-def _persist_detections(conn, db, job_id: str, detections, detection_time, duration_seconds):
-    """Write detections to Postgres (synced=TRUE) + Firestore batDetections.
+def _flatten_detection(det: dict, pred: dict, pipeline_version: str) -> dict:
+    species = det.get("class", "Unknown")
+    start = det.get("start_time", 0.0)
+    end = det.get("end_time", 0.0)
+    return {
+        "species": species,
+        "common_name": species,
+        "detection_prob": round(det.get("det_prob", 0.0), 4),
+        "start_time": round(start, 4),
+        "end_time": round(end, 4),
+        "low_freq": round(det.get("low_freq", 0.0), 1),
+        "high_freq": round(det.get("high_freq", 0.0), 1),
+        "duration_ms": round((end - start) * 1000, 1),
+        "predicted_class": pred["predicted_class"],
+        "prediction_confidence": round(pred["prediction_confidence"], 4),
+        "model_version": MODEL_VERSION,
+        "pipeline_version": pipeline_version,
+    }
 
-    Double-writing Firestore directly from the worker sidesteps the
-    sync-service's 60s cycle for upload results. sync-service would
-    otherwise skip these rows anyway because ``synced=TRUE``.
-    """
-    if not detections:
+
+def _persist_detections(conn, db, job_id: str, pairs, detection_time, pipeline_version: str):
+    """Write detections to Postgres (synced=TRUE) + Firestore batDetections."""
+    if not pairs:
         return
 
-    pg_rows = [
-        (
-            d["species"], d["common_name"], d["detection_prob"],
-            d["start_time"], d["end_time"], d["low_freq"],
-            d["high_freq"], d["duration_ms"],
-            DEVICE_LABEL, job_id, detection_time, "upload",
-            d.get("predicted_class"),
-            d.get("prediction_confidence"),
-            d.get("model_version"),
-            True,  # synced — worker already wrote to Firestore below
-        )
-        for d in detections
-    ]
-    with conn.cursor() as cur:
-        execute_values(cur, """
-            INSERT INTO bat_detections
-                (species, common_name, detection_prob, start_time,
-                 end_time, low_freq, high_freq, duration_ms,
-                 device, sync_id, detection_time, source,
-                 predicted_class, prediction_confidence, model_version,
-                 synced)
-            VALUES %s
-        """, pg_rows)
-    conn.commit()
+    detections = [_flatten_detection(d, p, pipeline_version) for d, p in pairs]
 
-    # Mirror into Firestore now so the dashboard updates without waiting
-    # for the sync-service cycle. Shape mirrors sync_bat_detections().
+    if conn is not None:
+        pg_rows = [
+            (
+                d["species"], d["common_name"], d["detection_prob"],
+                d["start_time"], d["end_time"], d["low_freq"],
+                d["high_freq"], d["duration_ms"],
+                DEVICE_LABEL, job_id, detection_time, "upload",
+                d["predicted_class"], d["prediction_confidence"], d["model_version"],
+                True,
+            )
+            for d in detections
+        ]
+        with conn.cursor() as cur:
+            execute_values(cur, """
+                INSERT INTO bat_detections
+                    (species, common_name, detection_prob, start_time,
+                     end_time, low_freq, high_freq, duration_ms,
+                     device, sync_id, detection_time, source,
+                     predicted_class, prediction_confidence, model_version,
+                     synced)
+                VALUES %s
+            """, pg_rows)
+        conn.commit()
+
+    # Firestore — same shape as sync_bat_detections writes for live
+    # captures, so the dashboard treats upload rows uniformly.
     batch = db.batch()
     for d in detections:
         doc_ref = db.collection(BAT_DETECTIONS_COLLECTION).document()
@@ -209,11 +278,10 @@ def _persist_detections(conn, db, job_id: str, detections, detection_time, durat
             "syncId": job_id,
             "detectionTime": detection_time,
             "source": "upload",
-            "predictedClass": d.get("predicted_class"),
-            "predictionConfidence": d.get("prediction_confidence"),
-            "modelVersion": d.get("model_version"),
-            # Fields present on live-source rows but not meaningful for
-            # uploads; write explicit nulls so dashboard shape matches.
+            "predictedClass": d["predicted_class"],
+            "predictionConfidence": d["prediction_confidence"],
+            "modelVersion": d["model_version"],
+            "pipelineVersion": d["pipeline_version"],
             "reviewedBy": None,
             "reviewedAt": None,
             "verifiedClass": None,
@@ -234,7 +302,7 @@ def _persist_detections(conn, db, job_id: str, detections, detection_time, durat
 #  Per-job pipeline
 # ---------------------------------------------------------------------------
 
-def process_job(conn, db, bucket, job_ref, job_data):
+def process_job(conn, db, bucket, classifier_model, classifier_ckpt, pipeline_cfg, job_ref, job_data):
     job_id = job_ref.id
     filename = job_data.get("filename", "unknown.wav")
     print(f"[WORKER] Processing job {job_id} ({filename})")
@@ -245,15 +313,38 @@ def process_job(conn, db, bucket, job_ref, job_data):
     try:
         _download_wav(bucket, job_id, tmp_path)
 
-        audio, sr = sf.read(tmp_path, dtype="float32")
-        duration_s = (len(audio) / sr) if sr else 0.0
-
-        detections = run_batdetect(tmp_path)
         detection_time = datetime.utcnow()
+        result = bat_pipeline.run_full_pipeline(
+            tmp_path, classifier_model, classifier_ckpt, **pipeline_cfg,
+        )
 
-        _persist_detections(conn, db, job_id, detections, detection_time, duration_s)
-        _mark_done(job_ref, detections, duration_s)
-        print(f"[WORKER] Job {job_id}: {len(detections)} detections, {duration_s:.1f}s audio")
+        if result.detections:
+            _persist_detections(
+                conn, db, job_id, result.detections,
+                detection_time, result.pipeline_version,
+            )
+            _mark_done(
+                job_ref, result.detections, result.duration_seconds,
+                stats=result.stats,
+                pipeline_version=result.pipeline_version,
+            )
+            print(
+                f"[WORKER] Job {job_id}: {len(result.detections)} detections "
+                f"({result.duration_seconds:.1f}s audio, stats={result.stats})"
+            )
+        else:
+            human = bat_pipeline.humanize_rejection(result.rejection_reason)
+            _mark_done(
+                job_ref, [], result.duration_seconds,
+                rejection_reason=result.rejection_reason,
+                rejection_message=human,
+                stats=result.stats,
+                pipeline_version=result.pipeline_version,
+            )
+            print(
+                f"[WORKER] Job {job_id}: 0 detections "
+                f"(reason={result.rejection_reason}, stats={result.stats})"
+            )
     except Exception as e:
         print(f"[WORKER] Job {job_id} failed: {e}")
         traceback.print_exc()
@@ -275,8 +366,20 @@ def main():
     bucket = fb_storage.bucket()
     print(f"[WORKER] Firebase connected — bucket={bucket.name}")
 
+    print(f"[WORKER] Loading groups classifier from {MODEL_PATH}")
+    classifier_model, classifier_ckpt = load_groups_classifier(MODEL_PATH)
+    print(
+        f"[WORKER] Classifier ready: {classifier_ckpt['class_names']} "
+        f"(model_version={MODEL_VERSION})"
+    )
+
+    pipeline_cfg = _load_pipeline_cfg()
+    print(f"[WORKER] Pipeline config: {pipeline_cfg}")
+    print(f"[WORKER] Pipeline version: {bat_pipeline.PIPELINE_VERSION}")
+
     conn = get_db_connection()
-    print(f"[WORKER] Postgres connected. Polling every {POLL_INTERVAL_SEC}s...")
+    mode = "Firestore + Postgres" if conn else "Firestore-only"
+    print(f"[WORKER] Ready ({mode}). Polling every {POLL_INTERVAL_SEC}s...")
 
     while True:
         try:
@@ -284,8 +387,12 @@ def main():
             claimed = _claim_next_pending_job(db)
             if claimed:
                 job_ref, job_data = claimed
-                process_job(conn, db, bucket, job_ref, job_data)
-                continue  # check for more pending jobs immediately
+                process_job(
+                    conn, db, bucket,
+                    classifier_model, classifier_ckpt, pipeline_cfg,
+                    job_ref, job_data,
+                )
+                continue
             time.sleep(POLL_INTERVAL_SEC)
         except Exception as e:
             print(f"[WORKER] Loop error: {e}")
