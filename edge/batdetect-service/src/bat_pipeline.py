@@ -176,6 +176,16 @@ def run_full_pipeline(
     diag_config["detection_threshold"] = min(
         DIAGNOSTIC_BD_THRESHOLD, user_threshold
     )
+    # Pin torch RNG before every forward pass. Belt-and-braces for the
+    # Cloud Function nondeterminism where the same audio would return
+    # 221 raw detections on one request and 0 on the next (same warm
+    # worker). BatDetect2 doesn't advertise random behaviour but
+    # pinning here costs nothing and rules it out as a cause.
+    try:
+        import torch
+        torch.manual_seed(0)
+    except ImportError:
+        pass  # Pi edge path imports torch separately; absence = fine.
     detections, features, _ = bat_api.process_audio(audio, config=diag_config)
 
     if detections:
