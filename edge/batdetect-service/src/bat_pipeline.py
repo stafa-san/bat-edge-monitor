@@ -51,23 +51,17 @@ PIPELINE_VERSION = "v1-2026-04-22"
 
 # BatDetect2 is queried at this permissive threshold so we can observe
 # sub-user-threshold emissions for troubleshooting. The user-facing
-# threshold is enforced by ``user_threshold`` / ``CLASSIFIER_DET_THRESHOLD``
-# downstream, so behaviour is unchanged.
+# threshold is enforced by ``user_threshold`` downstream, so behaviour
+# is unchanged.
 DIAGNOSTIC_BD_THRESHOLD = 0.1
 
-# Tuned 2026-04-23 after user's validation experiment on real Ohio
-# AudioMoth recordings: at the original training-distribution threshold
-# (0.5), UK-trained BatDetect2 missed genuine NA bat passes entirely
-# (e.g. 2MU01134_20240527_005517.wav — 0 detections where the
-# spectrogram clearly showed ~60 rhythmic FM pulses). Lowering to 0.3
-# recovered 58 detections on that file and the downstream gates
-# (classifier min_pred_conf=0.6, FM-sweep shape filter, audio-level
-# validator) still correctly rejected known-bad non-bat clips.
-#
-# Trade-off made explicit: classifier inputs in the 0.3-0.5 range are
-# slightly outside the training distribution, so the three downstream
-# gates are load-bearing. Don't remove them without re-validating.
-CLASSIFIER_DET_THRESHOLD = 0.3
+# DOCUMENTED REFERENCE VALUE — the threshold at which the classifier
+# head was trained (BatDetect2 features filtered at det_prob > 0.5).
+# Kept as a constant for traceability but NO LONGER enforced as a
+# floor; the effective threshold is whatever ``user_threshold`` the
+# caller passes. See the tuning rationale in DETECTION_TUNING_PLAYBOOK.md
+# and the comment on the threshold gate below.
+CLASSIFIER_TRAINING_DET_THRESHOLD = 0.5
 
 
 # -----------------------------------------------------------------------------
@@ -133,7 +127,7 @@ def run_full_pipeline(
     classifier_ckpt,
     *,
     bd_config: Optional[dict] = None,
-    user_threshold: float = 0.5,
+    user_threshold: float = 0.3,
     min_pred_conf: float = 0.6,
     hpf_enabled: bool = True,
     hpf_cutoff_hz: float = 16000.0,
@@ -199,8 +193,16 @@ def run_full_pipeline(
             duration_seconds=duration_s,
         )
 
-    # User-threshold gate — the real threshold matching training.
-    threshold = max(user_threshold, CLASSIFIER_DET_THRESHOLD)
+    # User-threshold gate. Previous versions force-floored this at
+    # CLASSIFIER_TRAINING_DET_THRESHOLD (0.5) to keep classifier inputs
+    # in-distribution. April 2026 experiments on real Ohio AudioMoth
+    # recordings showed UK-trained BatDetect2 is systematically
+    # under-confident on NA bats — ~60 rhythmic FM pulses in one file
+    # produced zero detections at 0.5 but 58 at 0.3. Downstream gates
+    # (min_pred_conf 0.6, FM-sweep shape filter, audio-level validator)
+    # absorb the out-of-distribution noise from 0.3-0.5 inputs without
+    # leaking false positives. So we trust user_threshold as-is.
+    threshold = user_threshold
     mask = np.array([d.get("det_prob", 0.0) >= threshold for d in detections])
     if not mask.any():
         return PipelineResult(

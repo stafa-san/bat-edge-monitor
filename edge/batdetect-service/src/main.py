@@ -227,9 +227,15 @@ def _run_batdetect_with_classifier(
     if not detections:
         return [], "batdetect2_no_detections", stats
 
-    # User-threshold gate — the REAL threshold that matches training
-    # and what the classifier expects to see.
-    threshold = max(user_threshold, CLASSIFIER_DET_THRESHOLD)
+    # User-threshold gate. Previous versions force-floored this at
+    # CLASSIFIER_DET_THRESHOLD (the training-distribution value, 0.5)
+    # via max(). Lowered 2026-04-23 after the 005517.wav false-negative
+    # experiment: UK-trained BatDetect2 is under-confident on NA bats,
+    # and 0.5 was dropping real passes. Downstream gates — classifier
+    # min_pred_conf 0.6 + FM-sweep shape filter + audio-level validator
+    # — absorb the extra out-of-distribution noise. See
+    # DETECTION_TUNING_PLAYBOOK.md for the full rationale.
+    threshold = user_threshold
     mask = np.array([d.get("det_prob", 0.0) >= threshold for d in detections])
     if not mask.any():
         return [], "all_below_user_threshold", stats

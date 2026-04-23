@@ -28,7 +28,11 @@ EXPECTED_BATDETECT2_VERSION = "1.3.1"
 EXPECTED_FEATURE_DIM = 32
 EXPECTED_DETECTION_KEYS = {"det_prob", "start_time", "end_time", "low_freq", "high_freq", "class"}
 EXPECTED_CLASSES = {"EPFU_LANO", "LABO", "LACI", "MYSP", "PESU"}
-CLASSIFIER_DET_THRESHOLD = 0.5
+# Lowered from 0.5 to 0.3 on 2026-04-23 to match the pipeline's active
+# threshold (bat_pipeline.CLASSIFIER_TRAINING_DET_THRESHOLD is now a
+# documented reference value only — the live threshold is the env-var
+# driven user_threshold, default 0.3). See DETECTION_TUNING_PLAYBOOK.md.
+CLASSIFIER_DET_THRESHOLD = 0.3
 
 
 def fail(msg):
