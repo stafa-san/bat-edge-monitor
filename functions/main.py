@@ -102,21 +102,31 @@ def _get_classifier():
         ckpt = _classifier_cache[1]
         print(f"[CF] Classifier ready: {ckpt['class_names']}")
 
-        # Warm-up pass through BatDetect2 on 1 s of synthetic chirp-ish
-        # noise. We don't care about the output — we only need torch
-        # to do a real forward pass so the lazy weight init + any JIT
-        # tracing happens while the worker is guaranteed idle.
+        # Warm-up pass through BatDetect2. We don't strictly need
+        # detections on the warm-up — we only need torch to do a real
+        # forward pass so the lazy weight init + any JIT tracing
+        # happens while the worker is guaranteed idle. But a pure
+        # sine tone doesn't exercise the detection HEAD (the detector
+        # is trained to ignore carriers, only fires on FM sweeps).
+        # Using a bat-like FM-chirp signal forces a full forward pass
+        # through both the backbone AND the detection head, which is
+        # the state we care about refreshing. Worked out the hard way
+        # on the Pi — see commit that introduced this comment.
         if not _bd_warmed_up:
+            from scipy.signal import chirp as _chirp
             cfg = bat_api.get_config()
             sr = int(cfg.get("target_samp_rate", 256000))
-            t = np.linspace(0.0, 1.0, sr, endpoint=False, dtype=np.float32)
-            # 30 kHz chirp with noise — in the bat band so the model
-            # actually exercises its detection head, not just passes
-            # silence through.
-            audio = (
-                0.1 * np.sin(2 * np.pi * 30_000 * t)
-                + 0.01 * np.random.randn(sr).astype(np.float32)
+            audio = np.zeros(sr, dtype=np.float32)
+            chirp_dur = 0.006
+            chirp_n = int(sr * chirp_dur)
+            chirp_t = np.linspace(0.0, chirp_dur, chirp_n, endpoint=False)
+            chirp_sig = _chirp(
+                chirp_t, f0=60_000, f1=25_000, t1=chirp_dur, method="linear",
             ).astype(np.float32)
+            for i in range(5):
+                start = int((0.1 + 0.15 * i) * sr)
+                audio[start:start + chirp_n] += 0.5 * chirp_sig
+            audio += 0.005 * np.random.randn(sr).astype(np.float32)
             try:
                 bat_api.process_audio(audio, config=cfg)
                 print("[CF] BatDetect2 warm-up complete")

@@ -71,6 +71,11 @@ services:
       - FM_SWEEP_MIN_SLOPE=${FM_SWEEP_MIN_SLOPE:--0.1}
       - FM_SWEEP_MAX_LOW_BAND_RATIO=${FM_SWEEP_MAX_LOW_BAND_RATIO:-0.5}
       - FM_SWEEP_MIN_R2=${FM_SWEEP_MIN_R2:-0.2}
+      # Diagnostic save: when BatDetect2 passed its threshold but a
+      # downstream gate (classifier/validator/FM-sweep) rejected the
+      # segment, write the raw WAV to /bat_audio/_diagnostic/ for
+      # forensic review. Filename encodes the rejection reason.
+      - DIAGNOSTIC_SAVE_REJECTIONS=${DIAGNOSTIC_SAVE_REJECTIONS:-false}
       - UPLOAD_BAT_AUDIO=false
       - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
       - MODEL_PATH=/app/models/groups_model.pt

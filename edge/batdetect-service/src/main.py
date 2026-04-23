@@ -330,6 +330,16 @@ async def main():
             "tier assignment reads the classifier's confidence per detection."
         )
 
+    # Diagnostic save — write a WAV for any segment where BatDetect2
+    # passed its threshold but a downstream gate (classifier / validator /
+    # FM-sweep) rejected it. Forensic data so we can inspect "near miss"
+    # rejections manually and tell whether filter thresholds are right.
+    diagnostic_save = os.getenv("DIAGNOSTIC_SAVE_REJECTIONS", "false").lower() == "true"
+    diagnostic_dir = os.path.join(BAT_AUDIO_DIR, "_diagnostic")
+    if diagnostic_save:
+        os.makedirs(diagnostic_dir, exist_ok=True)
+        print(f"[BAT] Diagnostic save enabled — near-miss rejections written to {diagnostic_dir}")
+
     print(f"[BAT] Initializing audio capture: {device_name} @ {sample_rate} Hz")
     capture = BatAudioCapture(device_name=device_name, sampling_rate=sample_rate)
 
@@ -355,38 +365,55 @@ async def main():
 
     # Warm-up forward pass. Forces BatDetect2 to fully initialise its
     # lazy weights + any torch JIT state before the capture loop starts
-    # taking real segments. If the model boots in a degenerate state
-    # (see BATDETECT2_STABILITY_FIX.md for the Cloud-Function incident
-    # where this exact failure mode silently ate a day's detections),
-    # the warm-up will either detect the synthetic chirp (good — model
-    # is alive) or return 0 detections on 30 kHz energy the model
-    # absolutely should see (bad — crash and let Docker restart us).
-    # Cheap insurance: ~1 s at boot saves the nightmare of the Pi
-    # running for weeks reporting "no bats" when bats are present.
+    # taking real segments. See BATDETECT2_STABILITY_FIX.md for the
+    # Cloud-Function incident where the detector silently returned
+    # zero raw detections for hours on audio that had just worked.
+    #
+    # Test signal: a burst of 5 downward FM chirps (60 kHz → 25 kHz
+    # over 6 ms each) spread across a 1-second window. A pure sine
+    # tone DOES NOT trigger BatDetect2 — the detector is trained on
+    # FM sweeps, not carriers, so it correctly ignores steady tones.
+    # The FM chirp shape is what a real bat call looks like; a healthy
+    # model MUST emit detections on this input. If it returns zero,
+    # the detector is in a degenerate state and we crash so Docker
+    # recycles us — better a loud restart loop than weeks of silent
+    # "no bat calls" in the field.
     try:
         import torch
+        from scipy.signal import chirp as _scipy_chirp
         # Pin torch RNG + thread count. Pi 5 has 4 cores; give all of
         # them to BatDetect2 (unlike the CF where we pinned to 1 due
         # to shared-vCPU contention).
         torch.manual_seed(0)
         torch.set_num_threads(max(1, os.cpu_count() or 4))
         _wu_sr = int(config.get("target_samp_rate", 256000))
-        _wu_t = np.linspace(0.0, 1.0, _wu_sr, endpoint=False, dtype=np.float32)
-        _wu_audio = (
-            0.1 * np.sin(2 * np.pi * 30_000 * _wu_t)
-            + 0.01 * np.random.randn(_wu_sr).astype(np.float32)
+        _wu_audio = np.zeros(_wu_sr, dtype=np.float32)
+        # 5 chirps spaced evenly across 1 s. Each is a 6 ms downward
+        # FM sweep from 60 kHz to 25 kHz — bread-and-butter shape for
+        # most NA+UK microbats in BatDetect2's training distribution.
+        _wu_chirp_dur = 0.006
+        _wu_chirp_n = int(_wu_sr * _wu_chirp_dur)
+        _wu_chirp_t = np.linspace(0.0, _wu_chirp_dur, _wu_chirp_n, endpoint=False)
+        _wu_chirp = _scipy_chirp(
+            _wu_chirp_t, f0=60_000, f1=25_000,
+            t1=_wu_chirp_dur, method="linear",
         ).astype(np.float32)
-        _wu_dets, _, _ = bat_api.process_audio(_wu_audio, config=config)
+        for _wu_i in range(5):
+            _wu_start = int((0.1 + 0.15 * _wu_i) * _wu_sr)
+            _wu_audio[_wu_start:_wu_start + _wu_chirp_n] += 0.5 * _wu_chirp
+        # Thin ambient noise so the spectrogram has texture.
+        _wu_audio += 0.005 * np.random.randn(_wu_sr).astype(np.float32)
+        # Use a permissive threshold for the warm-up — we care whether
+        # the detector can see the chirps at all, not about tuning.
+        _wu_cfg = dict(config)
+        _wu_cfg["detection_threshold"] = 0.1
+        _wu_dets, _, _ = bat_api.process_audio(_wu_audio, config=_wu_cfg)
         print(f"[BAT] BatDetect2 warm-up complete (raw_dets={len(_wu_dets)})")
         if len(_wu_dets) == 0:
-            # Model returned 0 detections on a 30 kHz chirp in its own
-            # target band. Don't silently run — crash and let Docker
-            # restart us. Better a loud restart loop than a week of
-            # missed bats in the field.
             raise RuntimeError(
-                "BatDetect2 warm-up saw 0 detections on a synthetic "
-                "30 kHz chirp — model is in a degenerate state. "
-                "Crashing so Docker restarts the container."
+                "BatDetect2 warm-up saw 0 detections on 5× synthetic "
+                "60→25 kHz FM chirps at threshold 0.1 — model is in a "
+                "degenerate state. Crashing so Docker restarts the container."
             )
     except Exception as exc:
         print(f"[BAT] BatDetect2 warm-up FAILED: {exc}")
@@ -523,6 +550,41 @@ async def main():
                         f"{_health_consecutive_bad} bad segments"
                     )
                 _health_consecutive_bad = 0
+
+            # Diagnostic save — when BatDetect2 passed its threshold
+            # but a downstream gate rejected the segment, copy the raw
+            # WAV aside for forensic review. This is how we tell
+            # whether the shape/validator filters are over-rejecting
+            # real bat calls vs correctly catching noise.
+            if (
+                diagnostic_save
+                and rejection_reason is not None
+                and bd_stats
+                and (bd_stats.get("count_above_user") or 0) > 0
+            ):
+                try:
+                    os.makedirs(diagnostic_dir, exist_ok=True)
+                    from datetime import datetime as _dt
+                    ts = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                    # Encode the rejection reason in the filename so we
+                    # can triage a folder full of these without opening
+                    # each one.
+                    safe_reason = (
+                        rejection_reason
+                        .replace("(", "_").replace(")", "").replace("=", "")
+                        .replace(".", "p").replace("+", "").replace("/", "-")
+                        .replace(":", "-").replace(",", "_")
+                    )[:80]
+                    diag_name = f"{site_id}_{ts}__BDpass_{safe_reason}.wav"
+                    diag_dest = os.path.join(diagnostic_dir, diag_name)
+                    shutil.copy2(audio_path, diag_dest)
+                    print(
+                        f"[BAT] DIAG saved: {diag_name} "
+                        f"(bd_max={bd_stats.get('max_det_prob'):.3f}, "
+                        f"user_pass={bd_stats.get('count_above_user')})"
+                    )
+                except Exception as e:
+                    print(f"[BAT] diagnostic save failed: {e}")
 
             # Audio-level + BD-stats + rejection sample for dashboard
             # troubleshooting. One row per captured segment — auto-
