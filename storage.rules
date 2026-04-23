@@ -24,6 +24,22 @@ service firebase.storage {
         && request.resource.contentType == 'audio/wav';
     }
 
+    // Spectrogram PNGs rendered by the Cloud Function. Publicly readable
+    // so any committee member with the dashboard URL can load them.
+    // Writes are Admin-SDK only.
+    match /spectrograms/{filename} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Time-expanded audio WAVs rendered by the Cloud Function (10×
+    // slowdown so ultrasonic calls become audible for playback).
+    // Publicly readable; Admin-SDK only writes.
+    match /audio/{filename} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

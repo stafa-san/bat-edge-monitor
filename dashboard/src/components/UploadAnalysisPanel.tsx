@@ -46,6 +46,10 @@ interface UploadJob {
   rejectionReason?: string;
   rejectionMessage?: string;
   pipelineVersion?: string;
+  // Populated by the Cloud Function after every analysis — a labelled
+  // PNG spectrogram of the uploaded audio with red detection boxes
+  // overlaid, hosted in Firebase Storage under spectrograms/.
+  spectrogramUrl?: string;
   // Client-only — present on the synthetic "uploading" row before the
   // Firestore doc exists.
   progress?: number;
@@ -434,6 +438,23 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
 
                 {expanded && (
                   <div className="px-4 pb-3 pt-1 border-t border-gray-100">
+                    {job.spectrogramUrl && (
+                      <div className="mt-3">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">
+                          Spectrogram
+                        </p>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={job.spectrogramUrl}
+                          alt={`Spectrogram of ${job.filename ?? "upload"}`}
+                          className="w-full rounded-lg border border-gray-200 bg-gray-50"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Red boxes mark detected bat calls labelled with the
+                          classifier's predicted species and confidence.
+                        </p>
+                      </div>
+                    )}
                     {job.status === "error" && (
                       <p className="text-xs text-red-600 mt-2">
                         {job.errorMessage ?? "Analysis failed."}
