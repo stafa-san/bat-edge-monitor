@@ -41,13 +41,29 @@ def _format_bd_stats(stats: dict | None) -> str:
     return " (" + " ".join(parts) + ")"
 
 
-def _compute_audio_stats(wav_path: str) -> tuple[float | None, float | None]:
-    """Return ``(rms, peak)`` in 0..1 normalised amplitude, or ``(None, None)``.
+def _compute_audio_stats(wav_path: str) -> tuple[
+    float | None, float | None, dict | None
+]:
+    """Return ``(rms, peak, band_rms)`` from the raw captured WAV.
 
-    Runs on the raw captured WAV before any software processing — what
-    the AudioMoth actually delivered to the USB bus. Used to surface
-    mic health on the dashboard (silent / undervolted mic).
+    ``band_rms`` is a dict keyed by ``"low"``, ``"mid"``, ``"high"``
+    giving the RMS amplitude inside three bat-relevant spectral bands:
+
+        low  = 15–30 kHz  (LACI main, EPFU/LANO low harmonics)
+        mid  = 30–60 kHz  (LABO main, EPFU/LANO main, broad centre)
+        high = 60–120 kHz (MYSP, PESU)
+
+    Added 2026-04-23 to distinguish "the mic captured ambient noise" from
+    "the mic captured bat-band ultrasound" when diagnosing zero-detection
+    nights. Whole-signal RMS alone can't tell the difference — a mic
+    capturing just room tone (broadband, mostly < 15 kHz) and a mic
+    capturing real bat passes can have similar full-band RMS if the
+    broadband noise is loud enough. Per-band RMS separates them.
+
+    See ZERO_DETECTIONS_RUNBOOK.md for the diagnostic decision tree.
     """
+    from scipy.signal import welch
+
     try:
         _sr, audio = wavfile.read(wav_path)
         if audio.ndim > 1:
@@ -59,9 +75,33 @@ def _compute_audio_stats(wav_path: str) -> tuple[float | None, float | None]:
             audio_f = audio.astype(np.float32)
         rms = float(np.sqrt(np.mean(audio_f * audio_f)))
         peak = float(np.max(np.abs(audio_f)))
-        return rms, peak
+
+        # Per-band RMS via Welch PSD. nperseg=4096 gives ~94 Hz bin
+        # resolution at 384 kHz, which is plenty for 15 kHz-wide bands.
+        freqs, psd = welch(
+            audio_f,
+            fs=_sr,
+            nperseg=min(4096, len(audio_f)),
+            scaling="density",
+        )
+        df = float(freqs[1] - freqs[0]) if len(freqs) > 1 else 1.0
+        bands = {
+            "low": (15_000.0, 30_000.0),
+            "mid": (30_000.0, 60_000.0),
+            "high": (60_000.0, min(120_000.0, _sr / 2.0)),
+        }
+        band_rms: dict[str, float] = {}
+        for name, (lo, hi) in bands.items():
+            mask = (freqs >= lo) & (freqs < hi)
+            if mask.any():
+                power = float(np.sum(psd[mask]) * df)
+                band_rms[name] = float(np.sqrt(max(power, 0.0)))
+            else:
+                band_rms[name] = 0.0
+
+        return rms, peak, band_rms
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def get_db_connection():
@@ -484,6 +524,25 @@ async def main():
 
     conn = get_db_connection()
 
+    # Idempotent schema migration for per-band RMS + BD top-class
+    # columns added 2026-04-23. Safe on fresh installs (IF NOT EXISTS)
+    # and on existing DBs. See ZERO_DETECTIONS_RUNBOOK.md for why these
+    # columns matter — they distinguish "quiet room" from "bats in band
+    # but detector missed them" when diagnosing zero-detection nights.
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE audio_levels
+                  ADD COLUMN IF NOT EXISTS bat_band_low_rms real,
+                  ADD COLUMN IF NOT EXISTS bat_band_mid_rms real,
+                  ADD COLUMN IF NOT EXISTS bat_band_high_rms real,
+                  ADD COLUMN IF NOT EXISTS bd_top_class varchar(64);
+            """)
+        conn.commit()
+        print("[BAT] audio_levels schema migration: band-RMS + top-class columns OK")
+    except Exception as e:
+        print(f"[BAT] audio_levels migration failed (non-fatal): {e}")
+
     print(
         f"[BAT] Monitoring started — batdetect_threshold={threshold}, "
         f"min_pred_conf={min_pred_conf}, segment={segment_duration}s"
@@ -544,7 +603,7 @@ async def main():
                 segment_counter["n"] += 1
                 segment_count = segment_counter["n"]
 
-                rms, peak = _compute_audio_stats(wav_path)
+                rms, peak, band_rms = _compute_audio_stats(wav_path)
 
                 rejection_reason = None
                 bd_stats = None
@@ -631,7 +690,7 @@ async def main():
                 await _handle_detection_result(
                     segment_count=segment_count,
                     wav_path=wav_path,
-                    rms=rms, peak=peak,
+                    rms=rms, peak=peak, band_rms=band_rms,
                     rejection_reason=rejection_reason,
                     bd_stats=bd_stats,
                     rows_data=rows_data,
@@ -659,7 +718,8 @@ async def main():
                 segment_queue.task_done()
 
     async def _handle_detection_result(*, segment_count, wav_path, rms, peak,
-                                       rejection_reason, bd_stats, rows_data):
+                                       band_rms, rejection_reason, bd_stats,
+                                       rows_data):
         """Everything after detection runs: DB insert, archive, log."""
         nonlocal conn
 
@@ -673,14 +733,20 @@ async def main():
                     cur.execute(
                         "INSERT INTO audio_levels "
                         "(rms, peak, bd_raw_count, bd_max_det_prob, "
-                        " bd_user_pass, rejection_reason) "
-                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        " bd_user_pass, rejection_reason, "
+                        " bat_band_low_rms, bat_band_mid_rms, "
+                        " bat_band_high_rms, bd_top_class) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                         (
                             rms, peak,
                             (bd_stats or {}).get("raw_count"),
                             (bd_stats or {}).get("max_det_prob"),
                             (bd_stats or {}).get("count_above_user"),
                             rejection_reason,
+                            (band_rms or {}).get("low"),
+                            (band_rms or {}).get("mid"),
+                            (band_rms or {}).get("high"),
+                            (bd_stats or {}).get("top_class"),
                         ),
                     )
                 conn.commit()

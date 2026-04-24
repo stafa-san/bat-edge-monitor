@@ -298,6 +298,24 @@ def run_migrations(conn):
                                WHERE table_name='audio_levels' AND column_name='rejection_reason') THEN
                     ALTER TABLE audio_levels ADD COLUMN rejection_reason VARCHAR(48);
                 END IF;
+                -- 2026-04-23: per-band RMS + BD top_class for
+                -- zero-detection diagnostics. See ZERO_DETECTIONS_RUNBOOK.md.
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bat_band_low_rms') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bat_band_low_rms REAL;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bat_band_mid_rms') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bat_band_mid_rms REAL;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bat_band_high_rms') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bat_band_high_rms REAL;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='audio_levels' AND column_name='bd_top_class') THEN
+                    ALTER TABLE audio_levels ADD COLUMN bd_top_class VARCHAR(64);
+                END IF;
             END $$;
         """)
         # Add audio columns to bat_detections if they don't exist yet
