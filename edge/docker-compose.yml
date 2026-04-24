@@ -38,12 +38,13 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=changeme
       - DEVICE_NAME=AudioMoth
-      # AudioMoth captures natively at 384 kHz (firmware 1.9.1). We ask
-      # ALSA for 256 kHz so plughw does a single clean resample down to
-      # BatDetect2's target_samp_rate (256 kHz). Setting this to 384000
-      # would force BatDetect2 to do its own resample, an extra step for
-      # no gain — all bat calls of interest are <120 kHz.
-      - SAMPLE_RATE=256000
+      # AudioMoth captures natively at 384 kHz (firmware 1.3.1). We ask
+      # ALSA for the native 384 kHz to AVOID plughw's built-in linear
+      # resampler (no anti-alias filter → aliasing of 128–192 kHz energy
+      # into the bat band). BatDetect2's own scipy polyphase resampler
+      # handles the single 384 → 256 kHz downsample cleanly at
+      # bat_api.load_audio() time. See AUDIO_CAPTURE_AUDIT.md.
+      - SAMPLE_RATE=384000
       # BatDetect2 threshold — lowered 2026-04-23 from 0.5 to 0.3
       # after the 005517.wav false-negative experiment. UK-trained
       # BatDetect2 is systematically under-confident on NA bats; 0.5
