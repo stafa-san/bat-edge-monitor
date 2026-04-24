@@ -108,6 +108,50 @@ def collect_summary(conn, site_id: str, window_hours: int = 24) -> dict:
         out["bd_max_det_prob"] = float(bd[1]) if bd[1] is not None else None
         out["bd_segments_passed_threshold"] = int(bd[2]) if bd[2] is not None else 0
 
+    # Per-band RMS percentiles — added 2026-04-23 for zero-detection
+    # diagnostics. If low/mid/high bat bands are all at noise floor,
+    # detection failure is a "no bats or mic dead" problem. If any
+    # band shows meaningful energy but bd_raw_avg is still 0, it's a
+    # model-side problem. See ZERO_DETECTIONS_RUNBOOK.md.
+    band = _fetchone(
+        conn,
+        f"""
+        SELECT round(percentile_cont(0.50) WITHIN GROUP (ORDER BY bat_band_low_rms)::numeric, 6),
+               round(percentile_cont(0.95) WITHIN GROUP (ORDER BY bat_band_low_rms)::numeric, 6),
+               round(percentile_cont(0.50) WITHIN GROUP (ORDER BY bat_band_mid_rms)::numeric, 6),
+               round(percentile_cont(0.95) WITHIN GROUP (ORDER BY bat_band_mid_rms)::numeric, 6),
+               round(percentile_cont(0.50) WITHIN GROUP (ORDER BY bat_band_high_rms)::numeric, 6),
+               round(percentile_cont(0.95) WITHIN GROUP (ORDER BY bat_band_high_rms)::numeric, 6)
+        FROM audio_levels WHERE recorded_at > {since_sql}
+        """,
+    )
+    if band:
+        out["band_low_p50"] = float(band[0]) if band[0] is not None else None
+        out["band_low_p95"] = float(band[1]) if band[1] is not None else None
+        out["band_mid_p50"] = float(band[2]) if band[2] is not None else None
+        out["band_mid_p95"] = float(band[3]) if band[3] is not None else None
+        out["band_high_p50"] = float(band[4]) if band[4] is not None else None
+        out["band_high_p95"] = float(band[5]) if band[5] is not None else None
+
+    # BatDetect2 top-class tally — what classes did the UK-trained
+    # detector most often flag as the strongest candidate, even
+    # sub-threshold? Useful for OOD diagnosis: if the top classes are
+    # all European species (Pipistrellus, Nyctalus, Eptesicus), the
+    # UK backbone is seeing bat-ish signal but labelling it wrongly —
+    # that's a retrain problem, not a capture problem.
+    top_classes = _fetchall(
+        conn,
+        f"""
+        SELECT bd_top_class, count(*)
+        FROM audio_levels
+        WHERE recorded_at > {since_sql}
+          AND bd_top_class IS NOT NULL
+        GROUP BY 1 ORDER BY 2 DESC
+        LIMIT 10
+        """,
+    )
+    out["bd_top_classes"] = [(c, int(n)) for c, n in top_classes]
+
     # Validator rejection counts
     rejections = _fetchall(
         conn,
@@ -193,7 +237,26 @@ def _format_text(s: dict) -> str:
         lines.append(f"  max det_prob observed       : {s['bd_max_det_prob']:.3f}")
     lines.append(f"  segments that passed user threshold : "
                  f"{s.get('bd_segments_passed_threshold', 0)}")
+    if s.get("bd_top_classes"):
+        lines.append("  top classes BD preferred (often sub-threshold):")
+        for cls, n in s["bd_top_classes"][:5]:
+            lines.append(f"    {cls:<28s} {n}")
     lines.append("")
+
+    # Bat-band RMS percentiles — zero-detection diagnostic aid.
+    if s.get("band_low_p50") is not None:
+        lines.append("Bat-band spectral energy (RMS, p50 / p95):")
+        lines.append(
+            f"  15–30 kHz  : {s['band_low_p50']:.5f} / {s['band_low_p95']:.5f}"
+        )
+        lines.append(
+            f"  30–60 kHz  : {s['band_mid_p50']:.5f} / {s['band_mid_p95']:.5f}"
+        )
+        lines.append(
+            f"  60–120 kHz : {s['band_high_p50']:.5f} / {s['band_high_p95']:.5f}"
+        )
+        lines.append("  → interpret with ZERO_DETECTIONS_RUNBOOK.md")
+        lines.append("")
 
     if s.get("rejections"):
         lines.append("Validator rejections:")
