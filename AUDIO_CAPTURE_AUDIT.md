@@ -239,7 +239,27 @@ we can consider resize_factor=1.0 at training time; notebook in
 
 ---
 
-## Stage H — What's not visible from software (needs advisor)
+## Stage H — AudioMoth hardware settings (confirmed by Dr. Johnson / operator)
+
+AudioMoth firmware 1.3.1, USB-mic mode. Configured via the macOS app before
+plugging into the Pi. These are not readable from USB descriptors on the
+host side.
+
+**Confirmed settings (2026-04-23)**:
+
+| Setting | Value | Implication |
+|---|---|---|
+| Gain preset | **high** (~40 dB) | Matches observed RMS distribution — p50 0.002 ambient, peaks to 0.9, real-bat RMS 0.015–0.02 with bd_raw up to 66. Good field sensitivity without saturation. |
+| Hardware HPF | **8 kHz** | Strongly kills < 8 kHz rumble; essentially flat above ~10 kHz. **Does not interact** with our 16 kHz software HPF in the bat band — my earlier −2.8 dB-at-18 kHz estimate holds. |
+
+If these ever change, the table of failure-mode implications:
+
+| If gain drops to med / med-low | Distant bats disappear, RMS baseline drops below validator floor |
+| If gain climbs to very-high | Ambient noise rises, more sub-threshold BatDetect2 "top=European species" noise |
+| If HW HPF → 16 kHz | Compounds with software HPF: −5 to −6 dB at 18 kHz, LACI low-tail loss. Would recommend dropping software HPF to 12 kHz. |
+| If HW HPF → OFF | More 1–8 kHz rumble in archived WAV (inspection-only impact; doesn't reach BatDetect2 through software HPF) |
+
+### Historical stage-H content (superseded by confirmed values above)
 
 Two AudioMoth settings are configured via the macOS AudioMoth app **before**
 plugging into the Pi. In USB-mic mode there's no way to read them back from
