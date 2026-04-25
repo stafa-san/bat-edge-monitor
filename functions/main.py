@@ -159,6 +159,17 @@ def _load_pipeline_cfg() -> dict:
     }
 
 
+# Permissive Night Mode thresholds — same values used on the Pi
+# during 2026-04-24 diagnostic capture. Opt-in per-upload via the
+# dashboard checkbox; never the default.
+PERMISSIVE_OVERRIDES = {
+    "user_threshold": 0.15,
+    "min_pred_conf": 0.2,
+    "validator_min_rms": 0.0008,
+    "fm_sweep_min_r2": 0.1,
+}
+
+
 # ---------------------------------------------------------------------------
 #  Persistence — Firestore only (no Postgres in the cloud)
 # ---------------------------------------------------------------------------
@@ -239,6 +250,7 @@ def _mark_done(
     spectrogram_sonobat_url: Optional[str] = None,
     spectrogram_sonobat_annotated_url: Optional[str] = None,
     time_expanded_audio_url: Optional[str] = None,
+    permissive_mode: bool = False,
 ):
     species_found = sorted({
         (pred.get("predicted_class") or det.get("class") or "Unknown")
@@ -267,6 +279,8 @@ def _mark_done(
         payload["spectrogramSonobatAnnotatedUrl"] = spectrogram_sonobat_annotated_url
     if time_expanded_audio_url:
         payload["timeExpandedAudioUrl"] = time_expanded_audio_url
+    if permissive_mode:
+        payload["permissiveMode"] = True
     job_ref.update(payload)
 
 
@@ -462,6 +476,21 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
         classifier_model, classifier_ckpt = _get_classifier()
         pipeline_cfg = _load_pipeline_cfg()
 
+        # Per-upload "permissive mode" — opt-in checkbox on the dashboard
+        # that swaps the four PNM thresholds (detection, classifier conf,
+        # RMS floor, FM-sweep R²) for this single run. Default deploy-wide
+        # thresholds are untouched.
+        permissive_mode = bool(job_data.get("permissiveMode", False))
+        if permissive_mode:
+            pipeline_cfg.update(PERMISSIVE_OVERRIDES)
+            print(
+                f"[CF] {job_id}: PERMISSIVE MODE — "
+                f"thr={pipeline_cfg['user_threshold']}, "
+                f"conf={pipeline_cfg['min_pred_conf']}, "
+                f"rms={pipeline_cfg['validator_min_rms']}, "
+                f"r2={pipeline_cfg['fm_sweep_min_r2']}"
+            )
+
         detection_time = datetime.utcnow()
         result = bat_pipeline.run_full_pipeline(
             tmp_path, classifier_model, classifier_ckpt, **pipeline_cfg,
@@ -500,6 +529,7 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 spectrogram_sonobat_url=spectrogram_sonobat_url,
                 spectrogram_sonobat_annotated_url=spectrogram_sonobat_annotated_url,
                 time_expanded_audio_url=time_expanded_audio_url,
+                permissive_mode=permissive_mode,
             )
             print(
                 f"[CF] {job_id}: {len(result.detections)} detections "
@@ -518,6 +548,7 @@ def process_upload(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> 
                 spectrogram_sonobat_url=spectrogram_sonobat_url,
                 spectrogram_sonobat_annotated_url=spectrogram_sonobat_annotated_url,
                 time_expanded_audio_url=time_expanded_audio_url,
+                permissive_mode=permissive_mode,
             )
             print(
                 f"[CF] {job_id}: 0 detections "

@@ -70,6 +70,10 @@ interface UploadJob {
   // 10× slowdown of the uploaded WAV so ultrasonic bat calls become
   // audible (40 kHz → 4 kHz). Hosted in Firebase Storage under audio/.
   timeExpandedAudioUrl?: string;
+  // True when the user opted into Permissive Night Mode thresholds for
+  // this specific upload. Used purely as a UI badge so reviewers can
+  // tell relaxed-threshold runs apart from default-threshold runs.
+  permissiveMode?: boolean;
   // Client-only — present on the synthetic "uploading" row before the
   // Firestore doc exists.
   progress?: number;
@@ -269,6 +273,7 @@ interface UploadAnalysisPanelProps {
 
 export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [permissiveMode, setPermissiveMode] = useState(false);
   const [recentJobs, setRecentJobs] = useState<UploadJob[]>([]);
   const [uploadingEntry, setUploadingEntry] = useState<UploadJob | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -450,6 +455,7 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
       filename,
       sizeBytes,
       progress: 0,
+      permissiveMode: permissiveMode || undefined,
     });
     // Expand the active card by default so the status is visible.
     setExpandedIds((prev) => new Set(prev).add(jobId));
@@ -465,16 +471,23 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
 
       // Upload succeeded — hand off to the Pi worker by creating the
       // Firestore job doc. The worker polls every ~5s.
+      // ``permissiveMode`` is read by the Cloud Function for this single
+      // run only. Omitted when false so default-threshold runs don't
+      // have an extra field on the doc.
       await setDoc(doc(db, "uploadJobs", jobId), {
         status: "pending",
         filename,
         sizeBytes,
         createdAt: serverTimestamp(),
+        ...(permissiveMode ? { permissiveMode: true } : {}),
       });
 
       // onSnapshot will now drive the card's state until done/error.
       // Clear the file picker so user can queue another upload.
+      // Reset permissive toggle to default after each upload so the
+      // looser thresholds never silently apply to a follow-up run.
       setSelectedFile(null);
+      setPermissiveMode(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Upload failed.";
       setUploadingEntry((prev) =>
@@ -504,21 +517,43 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
         </div>
       </div>
 
-      <form className="flex items-center gap-3 mb-6" onSubmit={handleAnalyze}>
-        <input
-          type="file"
-          accept=".wav,audio/wav"
-          onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-          disabled={activeUploadInFlight}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-blue-700 disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={!selectedFile || activeUploadInFlight}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+      <form className="space-y-3 mb-6" onSubmit={handleAnalyze}>
+        <div className="flex items-center gap-3">
+          <input
+            type="file"
+            accept=".wav,audio/wav"
+            onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+            disabled={activeUploadInFlight}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-blue-700 disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!selectedFile || activeUploadInFlight}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {activeUploadInFlight ? "Uploading…" : "Analyze WAV"}
+          </button>
+        </div>
+        <label
+          className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer select-none"
+          title="Lowers DETECTION_THRESHOLD 0.30→0.15, MIN_PREDICTION_CONF 0.30→0.20, VALIDATOR_MIN_RMS 0.002→0.0008, FM_SWEEP_MIN_R2 0.20→0.10. Same values used during the 2026-04-24 Permissive Night Mode capture."
         >
-          {activeUploadInFlight ? "Uploading…" : "Analyze WAV"}
-        </button>
+          <input
+            type="checkbox"
+            checked={permissiveMode}
+            onChange={(e) => setPermissiveMode(e.target.checked)}
+            disabled={activeUploadInFlight}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+          />
+          <span>
+            <span className="font-medium text-amber-700">Permissive mode</span>
+            <span className="text-gray-500">
+              {" "}— this upload only. Lowers all four thresholds for faint /
+              partially-occluded calls. Expect more false positives. Default
+              thresholds and other uploads are unchanged.
+            </span>
+          </span>
+        </label>
       </form>
 
       {submitError && (
@@ -624,31 +659,41 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
                       )}
                     </div>
                   </div>
-                  <span
-                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border shrink-0 ${badge.className}`}
-                  >
-                    {(job.status === "pending" || job.status === "processing") && (
-                      <svg
-                        className="animate-spin h-3 w-3"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden="true"
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {job.permissiveMode && (
+                      <span
+                        className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200"
+                        title="Ran with Permissive Night Mode thresholds (lower detection / classifier-conf / RMS / R² floors). Default thresholds were not changed."
                       >
-                        <circle
-                          cx="12" cy="12" r="10"
-                          stroke="currentColor" strokeWidth="3"
-                          className="opacity-25"
-                        />
-                        <path
-                          d="M22 12a10 10 0 0 1-10 10"
-                          stroke="currentColor" strokeWidth="3"
-                          strokeLinecap="round"
-                          className="opacity-90"
-                        />
-                      </svg>
+                        permissive
+                      </span>
                     )}
-                    {badge.label}
-                  </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border ${badge.className}`}
+                    >
+                      {(job.status === "pending" || job.status === "processing") && (
+                        <svg
+                          className="animate-spin h-3 w-3"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          aria-hidden="true"
+                        >
+                          <circle
+                            cx="12" cy="12" r="10"
+                            stroke="currentColor" strokeWidth="3"
+                            className="opacity-25"
+                          />
+                          <path
+                            d="M22 12a10 10 0 0 1-10 10"
+                            stroke="currentColor" strokeWidth="3"
+                            strokeLinecap="round"
+                            className="opacity-90"
+                          />
+                        </svg>
+                      )}
+                      {badge.label}
+                    </span>
+                  </div>
                 </button>
 
                 {job.status === "uploading" && job.progress != null && (
