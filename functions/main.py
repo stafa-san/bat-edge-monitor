@@ -159,13 +159,21 @@ def _load_pipeline_cfg() -> dict:
     }
 
 
-# Permissive Night Mode thresholds — same values used on the Pi
-# during 2026-04-24 diagnostic capture. Opt-in per-upload via the
-# dashboard checkbox; never the default.
+# Permissive mode — opt-in per-upload via the dashboard checkbox; never
+# the default. Originally a 4-threshold override (matching the Pi's
+# 2026-04-24 PNM diagnostic capture), extended on 2026-04-25 with a
+# 5th gate, ``validator_min_burst_ratio``, after Dr. Johnson's
+# amplitude-triggered WAVs were observed passing the RMS gate but
+# rejected at the burst-ratio gate (1.72x peak-to-baseline, default
+# floor 3.0x). Amplitude-triggered files don't have the quiet baseline
+# the burst test assumes — there is no "before the call" by design.
+# If this 5-gate mix proves useful for archival amplitude-triggered
+# data, we can mirror it into the Pi's live PNM config.
 PERMISSIVE_OVERRIDES = {
     "user_threshold": 0.15,
     "min_pred_conf": 0.2,
     "validator_min_rms": 0.0008,
+    "validator_min_burst_ratio": 1.5,
     "fm_sweep_min_r2": 0.1,
 }
 

@@ -40,6 +40,34 @@ A live capture that doesn't pass all gates just moves on — no row written. Tha
 
 The dashboard renders `rejectionMessage` verbatim in the upload card when `detectionCount=0`, so the user never sees a blank "0 detections" and wonders if the system is broken.
 
+## Permissive mode (per-upload override)
+
+The upload form has a "Permissive mode" checkbox below the file picker. When ticked, that *one* upload runs against a relaxed threshold preset; the deploy-wide defaults are not touched and other in-flight uploads are unaffected. The checkbox resets after each submit so the relaxed preset can never silently sticky on.
+
+**The five gates lowered:**
+
+| Gate | Default | Permissive | Why this floor catches things in default mode |
+|---|---|---|---|
+| `DETECTION_THRESHOLD` (BatDetect2 user threshold) | 0.30 | 0.15 | Quiet / distant passes have low det\_prob |
+| `MIN_PREDICTION_CONF` (groups classifier) | 0.30 | 0.20 | NA-trained classifier is conservative on partial calls |
+| `VALIDATOR_MIN_RMS` | 0.002 | 0.0008 | Faint recordings sit at 0.001–0.0018 RMS |
+| `VALIDATOR_MIN_BURST_RATIO` | 3.0× | 1.5× | Amplitude-triggered captures lack a quiet baseline by design |
+| `FM_SWEEP_MIN_R2` | 0.20 | 0.10 | Short FM sweeps don't fit a clean linear regression |
+
+**How it's wired:**
+
+* The dashboard form ([UploadAnalysisPanel.tsx](dashboard/src/components/UploadAnalysisPanel.tsx)) writes `permissiveMode: true` on the `uploadJobs/{id}` doc when the checkbox is set.
+* The Cloud Function ([functions/main.py](functions/main.py)) reads `permissiveMode` from the job doc and merges `PERMISSIVE_OVERRIDES` into the in-memory pipeline config for that one run.
+* The CF echoes `permissiveMode: true` back onto the job doc on completion so the UI can render an amber `permissive` pill on the job card. Default-threshold runs have no `permissiveMode` field at all.
+
+**Why the burst-ratio override matters (2026-04-25):**
+
+The first version of this feature mirrored the Pi's PNM, which lowers four thresholds (detection / classifier conf / RMS / FM-sweep R²). The first A/B test on Dr. Johnson's `20210326_235900T.WAV` showed permissive mode passing the RMS gate (0.0016 > 0.0008) but getting rejected one gate later with `validator:no_burst(1.72x)`. Dr. Johnson's archive is amplitude-triggered (the trigger fires on loud bursts and the WAV starts at the call), so the file lacks the quiet baseline the burst test was designed to use as a comparison point. Lowering the burst floor to 1.5× lets these files through; the live Pi (which captures continuously and *does* have quiet baselines between passes) keeps the 3.0× default.
+
+**Promotion path to the Pi:**
+
+This 5-gate mix lives only in the offline Cloud Function for now. If field experience shows it's the right relaxed preset for archival amplitude-triggered data, mirror `validator_min_burst_ratio=1.5` into the Pi's PNM `.env` block (currently 4 thresholds; would become 5).
+
 ## Deploy sync strategy (Pi ↔ Cloud)
 
 When you edit `bat_pipeline.py` or any of its dependencies (`audio_validator.py`, `classifier.py`):
