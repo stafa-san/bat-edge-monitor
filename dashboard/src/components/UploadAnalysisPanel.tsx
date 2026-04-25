@@ -536,7 +536,7 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
         </div>
         <label
           className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer select-none"
-          title="Lowers DETECTION_THRESHOLD 0.30→0.15, MIN_PREDICTION_CONF 0.30→0.20, VALIDATOR_MIN_RMS 0.002→0.0008, FM_SWEEP_MIN_R2 0.20→0.10. Same values used during the 2026-04-24 Permissive Night Mode capture."
+          title="Lowers DETECTION_THRESHOLD 0.30→0.15, MIN_PREDICTION_CONF 0.30→0.20, VALIDATOR_MIN_RMS 0.002→0.0008, VALIDATOR_MIN_BURST_RATIO 3.0→1.5, FM_SWEEP_MIN_R2 0.20→0.10. Designed to let faint passes and amplitude-triggered captures (Dr. Johnson's archive) through all five validator gates."
         >
           <input
             type="checkbox"
@@ -548,9 +548,10 @@ export function UploadAnalysisPanel({ batDetections }: UploadAnalysisPanelProps)
           <span>
             <span className="font-medium text-amber-700">Permissive mode</span>
             <span className="text-gray-500">
-              {" "}— this upload only. Lowers all four thresholds for faint /
-              partially-occluded calls. Expect more false positives. Default
-              thresholds and other uploads are unchanged.
+              {" "}— this upload only. Lowers all five gates so faint passes
+              and amplitude-triggered files (no quiet baseline) can get
+              through. Expect more false positives. Default thresholds and
+              other uploads are unchanged.
             </span>
           </span>
         </label>
