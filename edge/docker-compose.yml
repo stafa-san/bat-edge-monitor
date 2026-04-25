@@ -52,7 +52,7 @@ services:
       # 0.6 + FM-sweep shape filter + audio-level validator) absorb
       # the extra out-of-distribution noise. See DETECTION_TUNING_PLAYBOOK.md
       # and bat_pipeline.py CLASSIFIER_TRAINING_DET_THRESHOLD comment.
-      - DETECTION_THRESHOLD=0.3
+      - DETECTION_THRESHOLD=${DETECTION_THRESHOLD:-0.3}
       # 2026-04-23: lowered default 0.6 → 0.3 after field audit. Our
       # groups classifier sits on a UK-trained BatDetect2 backbone
       # that is systematically under-confident on NA bats (see
@@ -220,7 +220,7 @@ services:
       - DB_NAME=soundscape
       - DB_USER=postgres
       - DB_PASSWORD=changeme
-      - DETECTION_THRESHOLD=0.3
+      - DETECTION_THRESHOLD=${DETECTION_THRESHOLD:-0.3}
       - ENABLE_GROUPS_CLASSIFIER=${ENABLE_GROUPS_CLASSIFIER:-false}
       - MODEL_PATH=/app/models/groups_model.pt
       - MODEL_VERSION=${MODEL_VERSION:-groups_v1_post_epfu_partial_2026-04-17}
