@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -18,6 +19,45 @@ _onedrive_state = {
     "last_action": None,
     "rclone_available": None,
 }
+
+# Watchdog state. The main loop touches ``_watchdog_last_tick`` at the
+# top of every iteration; a separate daemon thread wakes periodically
+# and exits the process if the tick has gone stale. Combined with the
+# container's ``restart: unless-stopped`` policy this produces
+# auto-recovery from the silent-hang failure mode observed 2026-04-26
+# (container "Up X hours" but worker loop frozen, dashboard shows
+# "Device Offline" while the Pi itself is fine).
+_watchdog_last_tick = time.time()
+_watchdog_lock = threading.Lock()
+WATCHDOG_STALL_SECONDS = int(os.getenv("WATCHDOG_STALL_SECONDS", "120"))
+WATCHDOG_CHECK_SECONDS = int(os.getenv("WATCHDOG_CHECK_SECONDS", "30"))
+
+
+def _watchdog_loop() -> None:
+    """Daemon thread: kill the process if the main loop has stalled.
+
+    Sleeps ``WATCHDOG_CHECK_SECONDS`` between checks. If the gap between
+    ``now`` and ``_watchdog_last_tick`` exceeds ``WATCHDOG_STALL_SECONDS``
+    we log the stall and call ``os._exit(1)`` so docker can restart us.
+    Using ``os._exit`` instead of ``sys.exit`` so the dying main thread
+    can't swallow it via a try/except.
+    """
+    while True:
+        time.sleep(WATCHDOG_CHECK_SECONDS)
+        with _watchdog_lock:
+            age = time.time() - _watchdog_last_tick
+        if age > WATCHDOG_STALL_SECONDS:
+            print(
+                f"[SYNC] WATCHDOG: main loop stalled for {age:.0f}s "
+                f"(threshold {WATCHDOG_STALL_SECONDS}s) — exiting "
+                f"for container restart",
+                flush=True,
+            )
+            os._exit(1)
+
+
+def _start_watchdog() -> None:
+    threading.Thread(target=_watchdog_loop, daemon=True, name="sync-watchdog").start()
 
 
 def init_firebase():
@@ -703,6 +743,8 @@ def main():
         print(f"[SYNC] Migration warning: {e}")
 
     print(f"[SYNC] Starting sync loop (data: {sync_interval}s, health: {health_interval}s)")
+    _start_watchdog()
+    print(f"[SYNC] Watchdog armed (stall threshold {WATCHDOG_STALL_SECONDS}s)")
 
     # Daily summary schedule: fire once per day at DAILY_SUMMARY_HOUR_UTC.
     # We track the date of the last send in a module-level var so the
@@ -719,6 +761,11 @@ def main():
     cycle = 0
     last_data_sync = 0.0  # force immediate first data sync
     while True:
+        # Touch the watchdog at the top of every iteration so the
+        # external check sees us alive even if a downstream op is slow.
+        with _watchdog_lock:
+            global _watchdog_last_tick
+            _watchdog_last_tick = time.time()
         try:
             conn = get_db_connection()
             now = time.time()
