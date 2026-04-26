@@ -96,16 +96,41 @@ ROW "LAST 30 [BAT] LOG LINES (raw events + verdict)"
   | sed 's/^/  /'
 
 
-ROW "AUDIO_LEVELS (mic alive? last 10 rows, per-band RMS)"
+ROW "AUDIO_LEVELS (mic alive + BD activity per segment, last 12 rows)"
 "${COMPOSE[@]}" exec -T db psql -U postgres -d soundscape -c "
-SELECT to_char(reading_time, 'HH24:MI:SS') AS time,
-       ROUND(low_band_rms::numeric, 4) AS low_rms,
-       ROUND(bat_band_rms::numeric, 4) AS bat_rms,
-       ROUND(high_band_rms::numeric, 4) AS high_rms,
-       top_class
+SELECT to_char(recorded_at, 'HH24:MI:SS') AS t,
+       ROUND(rms::numeric, 4) AS rms,
+       ROUND(bat_band_mid_rms::numeric, 4) AS bat_mid,
+       bd_raw_count AS raw,
+       ROUND(bd_max_det_prob::numeric, 2) AS max_p,
+       bd_user_pass AS pass,
+       rejection_reason AS rejected,
+       LEFT(bd_top_class, 22) AS top
 FROM audio_levels
-ORDER BY reading_time DESC
-LIMIT 10;" 2>&1 | sed 's/^/  /'
+ORDER BY recorded_at DESC
+LIMIT 12;" 2>&1 | sed 's/^/  /'
+
+ROW "REJECTION COUNTS (all-time, audio_levels.rejection_reason)"
+"${COMPOSE[@]}" exec -T db psql -U postgres -d soundscape -c "
+SELECT COALESCE(rejection_reason, '<accepted>') AS reason,
+       COUNT(*)
+FROM audio_levels
+WHERE recorded_at > NOW() - INTERVAL '1 hour'
+GROUP BY 1
+ORDER BY 2 DESC;" 2>&1 | sed 's/^/  /'
+
+ROW "BD ACTIVITY HEALTH (last 60 min)"
+"${COMPOSE[@]}" exec -T db psql -U postgres -d soundscape -c "
+SELECT
+  COUNT(*)                                      AS segments,
+  ROUND(AVG(rms)::numeric, 4)                   AS avg_rms,
+  ROUND(AVG(bat_band_mid_rms)::numeric, 4)      AS avg_bat_rms,
+  SUM(bd_raw_count)                             AS total_raw_bd_events,
+  ROUND(AVG(bd_max_det_prob)::numeric, 3)       AS avg_max_p,
+  SUM(bd_user_pass)                             AS total_passing_user_thr,
+  COUNT(*) FILTER (WHERE rejection_reason IS NULL) AS accepted_segments
+FROM audio_levels
+WHERE recorded_at > NOW() - INTERVAL '1 hour';" 2>&1 | sed 's/^/  /'
 
 
 ROW "ACTIVE GATES (.env values)"
